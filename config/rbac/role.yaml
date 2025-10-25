@@ -1,0 +1,32 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - structure.emeland.io
+  resources:
+  - systems
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - structure.emeland.io
+  resources:
+  - systems/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - structure.emeland.io
+  resources:
+  - systems/status
+  verbs:
+  - get
+  - patch
+  - update

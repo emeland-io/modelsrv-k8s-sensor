@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- structure_v1alpha1_system.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples
