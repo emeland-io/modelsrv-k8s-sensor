@@ -3,20 +3,20 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-# Install go-bindata
+echo 1. Install go-bindata
 GO111MODULE=on go install github.com/go-bindata/go-bindata/...@latest
 
-# Create kind cluster
+echo 2. Create kind cluster
 kind create cluster --wait 5m
 
-# Load the operator image into kind
+echo 3. Load the operator image into kind
 kind load docker-image $IMAGE_NAME:$CI_COMMIT_REF_SLUG
 
-# Install CRDs
+echo 4. Install CRDs
 make install
 
-# Deploy operator
+echo 5. Deploy operator
 make deploy IMG=$IMAGE_NAME:$CI_COMMIT_REF_SLUG
 
-# Run e2e tests
+echo 6. Run e2e tests
 make test-e2e
