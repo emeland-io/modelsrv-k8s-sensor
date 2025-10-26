@@ -51,7 +51,22 @@ var _ = Describe("Component Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: structurev1alpha1.ComponentSpec{
+						DisplayName: "Test Component",
+						Version: structurev1alpha1.Version{
+							Version: "1.0.0",
+						},
+						Consumes: []structurev1alpha1.APIRef{
+							{
+								ApiId: "test-consumed-api",
+							},
+						},
+						Provides: []structurev1alpha1.APIRef{
+							{
+								ApiId: "test-provided-api",
+							},
+						},
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}

@@ -51,7 +51,14 @@ var _ = Describe("API Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: structurev1alpha1.APISpec{
+						DisplayName: "Test API",
+						Type:        "OpenAPI",
+						Version: structurev1alpha1.Version{
+							Version: "1.0.0",
+						},
+						SystemId: "test-system-id",
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
