@@ -21,7 +21,7 @@ import (
 )
 
 // APISpec defines the desired state of API
-// +kubebuilder:validation:ExactlyOneOf= SystemId SystemRef
+// +kubebuilder:validation:ExactlyOneOf=SystemId;SystemRef
 type APISpec struct {
 	// DisplayName is the human friendly name of the API
 	DisplayName string `json:"displayName"`
@@ -50,7 +50,7 @@ type APISpec struct {
 	SystemId string `json:"systemId,omitempty"`
 }
 
-// +kubebuilder:validation:ExactlyOneOf= VersionRef ApiId
+// +kubebuilder:validation:ExactlyOneOf=VersionRef;ApiId
 type APIRef struct {
 	// Name of the API to reference.
 	// +optional
