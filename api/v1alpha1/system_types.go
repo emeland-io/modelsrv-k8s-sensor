@@ -20,22 +20,55 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
 // SystemSpec defines the desired state of System
 type SystemSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// DisplayName is the human friendly name of the system
+	DisplayName string `json:"displayName"`
 
-	// Foo is an example field of System. Edit system_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// Description is a short description of the system
+	// +optional
+	Description string `json:"description,omitempty"`
+
+	// SystemId is the unique identifier of the system. It is optional to allow
+	// the controller to assign an ID automatically if not provided by the user.
+	// +optional
+	SystemId string `json:"systemId,omitempty"`
+
+	// Version is the version of the system
+	Version Version `json:"version"`
+}
+
+// Version defines information about the version of of an element of the system.
+type Version struct {
+	// Version is the identifier of the version, e.g. "1.0.0". The use of semantic versioning is recommended.
+	Version string `json:"version"`
+
+	// AvailableFrom is the date when this version became available.
+	// +optional
+	// +kubebuilder:validation:Format=date
+	AvailableFrom string `json:"availableFrom,omitempty"`
+
+	// DeprecatedFrom is the date when this version became deprecated.
+	// +optional
+	// +kubebuilder:validation:Format=date
+	DeprecatedFrom string `json:"deprecatedFrom,omitempty"`
+
+	// TerminatedFrom is the date when this version became terminated.
+	// +optional
+	// +kubebuilder:validation:Format=date
+	TerminatedFrom string `json:"terminatedFrom,omitempty"`
+}
+
+// define a reference to another entity.
+type VersionRef struct {
+	// Name of the entity to reference.
+	Name string `json:"name"`
+	// Version of the blueprint to reference
+	Version string `json:"version"`
 }
 
 // SystemStatus defines the observed state of System
 type SystemStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
 }
 
 // +kubebuilder:object:root=true

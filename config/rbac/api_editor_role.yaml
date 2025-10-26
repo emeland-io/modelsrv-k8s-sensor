@@ -1,15 +1,16 @@
----
+# permissions for end users to edit apis.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: manager-role
+  labels:
+    app.kubernetes.io/name: emeland-k8s
+    app.kubernetes.io/managed-by: kustomize
+  name: api-editor-role
 rules:
 - apiGroups:
   - structure.emeland.io
   resources:
   - apis
-  - components
-  - systems
   verbs:
   - create
   - delete
@@ -21,18 +22,6 @@ rules:
 - apiGroups:
   - structure.emeland.io
   resources:
-  - apis/finalizers
-  - components/finalizers
-  - systems/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - structure.emeland.io
-  resources:
   - apis/status
-  - components/status
-  - systems/status
   verbs:
   - get
-  - patch
-  - update

@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.1
-  name: systems.structure.emeland.io
+  name: apis.structure.emeland.io
 spec:
   group: structure.emeland.io
   names:
-    kind: System
-    listKind: SystemList
-    plural: systems
-    singular: system
+    kind: API
+    listKind: APIList
+    plural: apis
+    singular: api
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: System is the Schema for the systems API
+        description: API is the Schema for the apis API
         properties:
           apiVersion:
             description: |-
@@ -37,21 +37,48 @@ spec:
           metadata:
             type: object
           spec:
-            description: SystemSpec defines the desired state of System
+            description: APISpec defines the desired state of API
             properties:
-              description:
-                description: Description is a short description of the system
-                type: string
-              displayName:
-                description: DisplayName is the human friendly name of the system
-                type: string
-              systemId:
+              apiId:
                 description: |-
-                  SystemId is the unique identifier of the system. It is optional to allow
+                  apiId is the unique identifier of the API. It is optional to allow
                   the controller to assign an ID automatically if not provided by the user.
                 type: string
+              description:
+                description: Description is a short description of the API
+                type: string
+              displayName:
+                description: DisplayName is the human friendly name of the API
+                type: string
+              systemId:
+                description: SystemId is a reference to the system by UUID, that this
+                  API belongs to. Either SystemRef or SystemId must be set.
+                type: string
+              systemRef:
+                description: System is a reference to the system by name and version,
+                  that this API belongs to. Either SystemRef or SystemId must be set.
+                properties:
+                  name:
+                    description: Name of the entity to reference.
+                    type: string
+                  version:
+                    description: Version of the blueprint to reference
+                    type: string
+                required:
+                - name
+                - version
+                type: object
+              type:
+                description: Type is the type of the API, e.g. OpenAPI, GraphQL, gRPC,
+                  etc.
+                enum:
+                - OpenAPI
+                - GraphQL
+                - gRPC
+                - Other
+                type: string
               version:
-                description: Version is the version of the system
+                description: Version is the version of the API
                 properties:
                   availableFrom:
                     description: AvailableFrom is the date when this version became
@@ -77,10 +104,11 @@ spec:
                 type: object
             required:
             - displayName
+            - type
             - version
             type: object
           status:
-            description: SystemStatus defines the observed state of System
+            description: APIStatus defines the observed state of API
             type: object
         type: object
     served: true
