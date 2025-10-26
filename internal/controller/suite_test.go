@@ -33,7 +33,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	structurev1alpha1 "gitlab.com/emeland/k8s-model/api/v1alpha1"
+	structurev1alpha1 "gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 

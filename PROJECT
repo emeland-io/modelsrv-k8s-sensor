@@ -18,7 +18,7 @@ resources:
   domain: emeland.io
   group: structure
   kind: System
-  path: gitlab.com/emeland/k8s-model/api/v1alpha1
+  path: gitlab.com/emeland/k8s-model/api/k8s/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
@@ -27,7 +27,7 @@ resources:
   domain: emeland.io
   group: structure
   kind: API
-  path: gitlab.com/emeland/k8s-model/api/v1alpha1
+  path: gitlab.com/emeland/k8s-model/api/k8s/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
@@ -36,6 +36,6 @@ resources:
   domain: emeland.io
   group: structure
   kind: Component
-  path: gitlab.com/emeland/k8s-model/api/v1alpha1
+  path: gitlab.com/emeland/k8s-model/api/k8s/v1alpha1
   version: v1alpha1
 version: "3"

@@ -27,7 +27,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	structurev1alpha1 "gitlab.com/emeland/k8s-model/api/v1alpha1"
+	structurev1alpha1 "gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
 )
 
 var _ = Describe("API Controller", func() {

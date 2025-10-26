@@ -24,7 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	structurev1alpha1 "gitlab.com/emeland/k8s-model/api/v1alpha1"
+	structurev1alpha1 "gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
 )
 
 // ComponentReconciler reconciles a Component object
