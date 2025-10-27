@@ -36,6 +36,15 @@ type SystemSpec struct {
 
 	// Version is the version of the system
 	Version Version `json:"version"`
+
+	// Abstract indicates whether this system is abstract. An abstract system cannot be deployed
+	// and serves as a blueprint for other systems, outside of the scope of the given system.
+	// +optional
+	Abstract bool `json:"abstract,omitempty"`
+
+	// ParentRef is a reference to the parent system by name and version, if this system is a specialization of another system.
+	// +optional
+	ParentRef *VersionRef `json:"parentRef,omitempty"`
 }
 
 // Version defines information about the version of of an element of the system.

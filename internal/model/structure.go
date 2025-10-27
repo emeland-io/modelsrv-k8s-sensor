@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -12,14 +13,14 @@ import (
 var SystemNotFoundError error = fmt.Errorf("System not found")
 
 type Model interface {
-	AddSystem(sys *v1alpha1.System, writer client.SubResourceWriter) (any, error)
+	AddSystem(sys *v1alpha1.System, writer client.SubResourceWriter) error
 	DeleteSystemByResourceName(s string) error
 }
 
 type modelData struct {
-	Systems    []*System
-	APIs       []*API
-	Components []*Component
+	SystemsByName    map[string]*System
+	APIsByName       map[string]*API
+	ComponentsByName map[string]*Component
 
 	SystemsByUUID    map[uuid.UUID]*System
 	APIsByUUID       map[uuid.UUID]*API
@@ -33,19 +34,16 @@ type modelData struct {
 // ensure Model interface is implemented correctly
 var _ Model = (*modelData)(nil)
 
-func (m *modelData) AddSystem(sys *v1alpha1.System, writer client.SubResourceWriter) (any, error) {
-	panic("unimplemented")
-}
-
-func (m *modelData) DeleteSystemByResourceName(s string) error {
-	panic("unimplemented")
-}
-
-func NewModel() *modelData {
+func NewModel(ctx context.Context) *modelData {
 	return &modelData{
-		SystemsByUUID:      make(map[uuid.UUID]*System),
-		APIsByUUID:         make(map[uuid.UUID]*API),
-		ComponentsByUUID:   make(map[uuid.UUID]*Component),
+		SystemsByName:    make(map[string]*System),
+		APIsByName:       make(map[string]*API),
+		ComponentsByName: make(map[string]*Component),
+
+		SystemsByUUID:    make(map[uuid.UUID]*System),
+		APIsByUUID:       make(map[uuid.UUID]*API),
+		ComponentsByUUID: make(map[uuid.UUID]*Component),
+
 		SystemInstances:    make(map[uuid.UUID]*SystemInstance),
 		APIInstances:       make(map[uuid.UUID]*APIInstance),
 		ComponentInstances: make(map[uuid.UUID]*ComponentInstance),
@@ -54,9 +52,9 @@ func NewModel() *modelData {
 
 type Version struct {
 	Version        string
-	AvailableFrom  time.Time
-	DeprecatedFrom time.Time
-	TerminatedFrom time.Time
+	AvailableFrom  *time.Time
+	DeprecatedFrom *time.Time
+	TerminatedFrom *time.Time
 }
 
 type EntityVersion struct {
@@ -65,10 +63,11 @@ type EntityVersion struct {
 }
 
 type System struct {
-	DisplayName string
-	Description string
-	SystemId    *uuid.UUID
-	Version     Version
+	DisplayName  string
+	Description  string
+	SystemId     *uuid.UUID
+	Version      Version
+	statusWriter client.SubResourceWriter
 }
 
 type SystemRef struct {
@@ -150,4 +149,57 @@ type ComponentInstance struct {
 	InstanceId     uuid.UUID
 	ComponentRef   EntityVersion
 	SystemInstance *SystemInstanceRef
+}
+
+func (m *modelData) AddSystem(sys *v1alpha1.System, statusWriter client.SubResourceWriter) error {
+	newSys := &System{
+		DisplayName:  sys.Spec.DisplayName,
+		Description:  sys.Spec.Description,
+		statusWriter: statusWriter,
+	}
+
+	m.SystemsByName[sys.Name] = newSys
+
+	// parse Version
+	newSys.Version = parseVersion(sys.Spec.Version)
+
+	// parse ID if set
+	if sys.Spec.SystemId != "" {
+		uid, err := uuid.Parse(sys.Spec.SystemId)
+		if err == nil {
+			newSys.SystemId = &uid
+			m.SystemsByUUID[uid] = newSys
+		}
+	}
+
+	// parse parent ref if set
+
+	return nil
+}
+
+func (m *modelData) DeleteSystemByResourceName(s string) error {
+	panic("unimplemented")
+}
+
+func parseDate(dateStr string) *time.Time {
+	if dateStr == "" {
+		return nil
+	}
+	t, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return nil
+	}
+	return &t
+}
+
+func parseVersion(v v1alpha1.Version) Version {
+	ver := Version{
+		Version: v.Version,
+	}
+
+	ver.AvailableFrom = parseDate(v.AvailableFrom)
+	ver.DeprecatedFrom = parseDate(v.DeprecatedFrom)
+	ver.TerminatedFrom = parseDate(v.TerminatedFrom)
+
+	return ver
 }

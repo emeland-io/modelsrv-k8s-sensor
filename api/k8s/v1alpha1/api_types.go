@@ -43,7 +43,7 @@ type APISpec struct {
 	Type string `json:"type"`
 
 	// System is a reference to the system by name and version, that this API belongs to. Either SystemRef or SystemId must be set.
-	SystemRef VersionRef `json:"systemRef,omitempty"`
+	SystemRef VersionRef `json:"systemRef"`
 
 	// SystemId is a reference to the system by UUID, that this API belongs to. Either SystemRef or SystemId must be set.
 	// +optional
