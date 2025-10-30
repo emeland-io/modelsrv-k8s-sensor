@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -27,7 +28,6 @@ import (
 	logr "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
-	structurev1alpha1 "gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
 	"gitlab.com/emeland/k8s-model/internal/model"
 )
 
@@ -49,7 +49,7 @@ func (r *SystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	err := r.Get(ctx, req.NamespacedName, sys)
 
 	if err == nil {
-		_, err = r.Model.AddSystem(sys, r.Client.Status())
+		err = r.Model.AddSystem(convertSystem(sys), req.NamespacedName.String(), r.Client.Status())
 		if err != nil {
 			log.Error(err, "could not add service to model")
 		}
@@ -69,6 +69,26 @@ func (r *SystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 // SetupWithManager sets up the controller with the Manager.
 func (r *SystemReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&structurev1alpha1.System{}).
+		For(&v1alpha1.System{}).
 		Complete(r)
+}
+
+func convertSystem(sys *v1alpha1.System) *model.System {
+	newSys := &model.System{
+		DisplayName: sys.Spec.DisplayName,
+		Description: sys.Spec.Description,
+	}
+
+	// parse Version
+	newSys.Version = model.ParseVersion(sys.Spec.Version)
+
+	// parse ID if set
+	if sys.Spec.SystemId != "" {
+		uid, err := uuid.Parse(sys.Spec.SystemId)
+		if err == nil {
+			newSys.SystemId = &uid
+		}
+	}
+
+	return newSys
 }

@@ -28,6 +28,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	structurev1alpha1 "gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
+	"gitlab.com/emeland/k8s-model/internal/model"
 )
 
 var _ = Describe("System Controller", func() {
@@ -68,12 +69,17 @@ var _ = Describe("System Controller", func() {
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
+			model, err := model.NewModel()
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Reconciling the created resource")
 			controllerReconciler := &SystemReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
+				Model:  model,
 			}
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())

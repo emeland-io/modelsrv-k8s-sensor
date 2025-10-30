@@ -1,19 +1,17 @@
 package model
 
 import (
-	"context"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
-	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var SystemNotFoundError error = fmt.Errorf("System not found")
 
 type Model interface {
-	AddSystem(sys *v1alpha1.System, writer client.SubResourceWriter) error
+	AddSystem(sys *System, name string, writer client.SubResourceWriter) error
 	DeleteSystemByResourceName(s string) error
 }
 
@@ -34,8 +32,8 @@ type modelData struct {
 // ensure Model interface is implemented correctly
 var _ Model = (*modelData)(nil)
 
-func NewModel(ctx context.Context) *modelData {
-	return &modelData{
+func NewModel() (*modelData, error) {
+	model := &modelData{
 		SystemsByName:    make(map[string]*System),
 		APIsByName:       make(map[string]*API),
 		ComponentsByName: make(map[string]*Component),
@@ -48,6 +46,8 @@ func NewModel(ctx context.Context) *modelData {
 		APIInstances:       make(map[uuid.UUID]*APIInstance),
 		ComponentInstances: make(map[uuid.UUID]*ComponentInstance),
 	}
+
+	return model, nil
 }
 
 type Version struct {
@@ -151,55 +151,19 @@ type ComponentInstance struct {
 	SystemInstance *SystemInstanceRef
 }
 
-func (m *modelData) AddSystem(sys *v1alpha1.System, statusWriter client.SubResourceWriter) error {
-	newSys := &System{
-		DisplayName:  sys.Spec.DisplayName,
-		Description:  sys.Spec.Description,
-		statusWriter: statusWriter,
-	}
+func (m *modelData) AddSystem(sys *System, name string, statusWriter client.SubResourceWriter) error {
+	sys.statusWriter = statusWriter
 
-	m.SystemsByName[sys.Name] = newSys
-
-	// parse Version
-	newSys.Version = parseVersion(sys.Spec.Version)
-
-	// parse ID if set
-	if sys.Spec.SystemId != "" {
-		uid, err := uuid.Parse(sys.Spec.SystemId)
-		if err == nil {
-			newSys.SystemId = &uid
-			m.SystemsByUUID[uid] = newSys
-		}
-	}
+	m.SystemsByName[name] = sys
 
 	// parse parent ref if set
+	if sys.SystemId != nil {
+		m.SystemsByUUID[*sys.SystemId] = sys
+	}
 
 	return nil
 }
 
 func (m *modelData) DeleteSystemByResourceName(s string) error {
 	panic("unimplemented")
-}
-
-func parseDate(dateStr string) *time.Time {
-	if dateStr == "" {
-		return nil
-	}
-	t, err := time.Parse("2006-01-02", dateStr)
-	if err != nil {
-		return nil
-	}
-	return &t
-}
-
-func parseVersion(v v1alpha1.Version) Version {
-	ver := Version{
-		Version: v.Version,
-	}
-
-	ver.AvailableFrom = parseDate(v.AvailableFrom)
-	ver.DeprecatedFrom = parseDate(v.DeprecatedFrom)
-	ver.TerminatedFrom = parseDate(v.TerminatedFrom)
-
-	return ver
 }
