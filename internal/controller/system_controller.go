@@ -90,5 +90,11 @@ func convertSystem(sys *v1alpha1.System) *model.System {
 		}
 	}
 
+	// transfer annotations
+	newSys.Annotations = make(map[string]string)
+	for key, value := range sys.Annotations {
+		newSys.Annotations[key] = value
+	}
+
 	return newSys
 }

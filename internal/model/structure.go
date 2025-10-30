@@ -13,6 +13,7 @@ var SystemNotFoundError error = fmt.Errorf("System not found")
 type Model interface {
 	AddSystem(sys *System, name string, writer client.SubResourceWriter) error
 	DeleteSystemByResourceName(s string) error
+	GetSystemByResourceName(s string) *System
 }
 
 type modelData struct {
@@ -67,6 +68,9 @@ type System struct {
 	Description  string
 	SystemId     *uuid.UUID
 	Version      Version
+	Abstract     bool
+	Parent       SystemRef
+	Annotations  map[string]string
 	statusWriter client.SubResourceWriter
 }
 
@@ -108,6 +112,7 @@ type API struct {
 	Version     Version
 	Type        string
 	System      *SystemRef
+	Annotations map[string]string
 }
 
 type ApiRef struct {
@@ -123,12 +128,14 @@ type Component struct {
 	Version     Version
 	Consumes    []ApiRef
 	Provides    []ApiRef
+	Annotations map[string]string
 }
 
 type SystemInstance struct {
 	DisplayName string
 	InstanceId  uuid.UUID
 	SystemRef   SystemRef
+	Annotations map[string]string
 }
 
 type SystemInstanceRef struct {
@@ -165,5 +172,19 @@ func (m *modelData) AddSystem(sys *System, name string, statusWriter client.SubR
 }
 
 func (m *modelData) DeleteSystemByResourceName(s string) error {
-	panic("unimplemented")
+	_, exists := m.SystemsByName[s]
+	if !exists {
+		return SystemNotFoundError
+	}
+
+	delete(m.SystemsByName, s)
+	return nil
+}
+
+func (m *modelData) GetSystemByResourceName(s string) *System {
+	system, exists := m.SystemsByName[s]
+	if !exists {
+		return nil
+	}
+	return system
 }
