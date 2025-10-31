@@ -37,6 +37,7 @@ var _ = Describe("System Controller", func() {
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
 		const displayName = "Test System"
+		systemId := uuid.New()
 		const availableDate = "2023-01-01"
 		const deprecatedDate = "2024-01-01"
 		const terminatedDate = "2025-01-01"
@@ -57,7 +58,6 @@ var _ = Describe("System Controller", func() {
 		system := &structurev1alpha1.System{}
 
 		BeforeEach(func() {
-			systemId := uuid.New()
 
 			By("creating the custom resource for the Kind System")
 			err := k8sClient.Get(ctx, typeNamespacedName, system)
@@ -73,7 +73,9 @@ var _ = Describe("System Controller", func() {
 					},
 					Spec: structurev1alpha1.SystemSpec{
 						DisplayName: displayName,
+						Description: description,
 						SystemId:    systemId.String(),
+						Version:     version,
 					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
@@ -106,12 +108,16 @@ var _ = Describe("System Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			system := model.GetSystemByResourceName(typeNamespacedName.String())
+			system := model.GetSystemByResourceName("no-such-resource")
+			Expect(system).To(BeNil())
+			system = model.GetSystemByResourceName(typeNamespacedName.String())
 			Expect(system).NotTo(BeNil())
 			Expect(system.DisplayName).To(Equal(displayName))
 			Expect(system.Description).To(Equal(description))
+			Expect(system.SystemId).To(Equal(systemId))
+			Expect(system.Version).To(Equal(parseVersion(version)))
 			Expect(system.Annotations["structure.emeland.io/system-id"]).To(Equal("test-system-id"))
-			Expect(system.Version.Version).To(Equal(version))
+
 		})
 	})
 })

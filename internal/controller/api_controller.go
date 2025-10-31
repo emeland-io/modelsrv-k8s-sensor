@@ -18,19 +18,24 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/google/uuid"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
+	logr "sigs.k8s.io/controller-runtime/pkg/log"
 
-	structurev1alpha1 "gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
+	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
+	"gitlab.com/emeland/k8s-model/internal/model"
 )
 
 // APIReconciler reconciles a API object
 type APIReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	Model  model.Model
 }
 
 // +kubebuilder:rbac:groups=structure.emeland.io,resources=apis,verbs=get;list;watch;create;update;patch;delete
@@ -47,9 +52,24 @@ type APIReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/reconcile
 func (r *APIReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	log := logr.FromContext(ctx)
 
-	// TODO(user): your logic here
+	api := &v1alpha1.API{}
+	err := r.Get(ctx, req.NamespacedName, api)
+
+	if err == nil {
+		err = r.Model.AddApi(convertAPI(api), req.NamespacedName.String(), r.Client.Status())
+		if err != nil {
+			log.Error(err, "could not add service to model")
+		}
+	} else if errors.IsNotFound(err) {
+		err = r.Model.DeleteApiByResourceName(req.NamespacedName.String())
+		if err == model.ApiNotFoundError {
+			err = nil // ignore a resource that is not even in the model
+		}
+	} else {
+		log.Error(err, fmt.Sprintf("could not get API %s", req.NamespacedName))
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -57,6 +77,31 @@ func (r *APIReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 // SetupWithManager sets up the controller with the Manager.
 func (r *APIReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&structurev1alpha1.API{}).
+		For(&v1alpha1.API{}).
 		Complete(r)
+}
+
+func convertAPI(sys *v1alpha1.API) *model.API {
+	newApi := &model.API{
+		DisplayName: sys.Spec.DisplayName,
+		Description: sys.Spec.Description,
+		Version:     parseVersion(sys.Spec.Version),
+		Type:        model.ParseApiType(sys.Spec.Type),
+	}
+
+	// parse ID if set
+	if sys.Spec.ApiId != "" {
+		uid, err := uuid.Parse(sys.Spec.ApiId)
+		if err == nil {
+			newApi.ApiId = uid
+		}
+	}
+
+	// transfer annotations
+	newApi.Annotations = make(map[string]string)
+	for key, value := range sys.Annotations {
+		newApi.Annotations[key] = value
+	}
+
+	return newApi
 }

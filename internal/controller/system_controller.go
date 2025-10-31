@@ -80,13 +80,13 @@ func convertSystem(sys *v1alpha1.System) *model.System {
 	}
 
 	// parse Version
-	newSys.Version = model.ParseVersion(sys.Spec.Version)
+	newSys.Version = parseVersion(sys.Spec.Version)
 
 	// parse ID if set
 	if sys.Spec.SystemId != "" {
 		uid, err := uuid.Parse(sys.Spec.SystemId)
 		if err == nil {
-			newSys.SystemId = &uid
+			newSys.SystemId = uid
 		}
 	}
 

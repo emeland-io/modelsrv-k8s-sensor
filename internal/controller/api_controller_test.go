@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 
+	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -27,12 +28,27 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
 	structurev1alpha1 "gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
+	"gitlab.com/emeland/k8s-model/internal/model"
 )
 
 var _ = Describe("API Controller", func() {
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
+		const displayName = "Test System"
+		apiId := uuid.New()
+		apiType := model.ParseApiType("OpenAPI")
+		const availableDate = "2023-01-01"
+		const deprecatedDate = "2024-01-01"
+		const terminatedDate = "2025-01-01"
+		const description = "This is a test system."
+		version := v1alpha1.Version{
+			Version:        "1.0.0",
+			AvailableFrom:  availableDate,
+			DeprecatedFrom: deprecatedDate,
+			TerminatedFrom: terminatedDate,
+		}
 
 		ctx := context.Background()
 
@@ -50,14 +66,16 @@ var _ = Describe("API Controller", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
+						Annotations: map[string]string{
+							"structure.emeland.io/system-id": "test-system-id",
+						},
 					},
 					Spec: structurev1alpha1.APISpec{
-						DisplayName: "Test API",
-						Type:        "OpenAPI",
-						Version: structurev1alpha1.Version{
-							Version: "1.0.0",
-						},
-						SystemId: "test-system-id",
+						DisplayName: displayName,
+						Description: description,
+						ApiId:       apiId.String(),
+						Version:     version,
+						Type:        apiType.String(),
 					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
@@ -75,17 +93,34 @@ var _ = Describe("API Controller", func() {
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
+			model, err := model.NewModel()
+			Expect(err).NotTo(HaveOccurred())
+
 			controllerReconciler := &APIReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
+				Model:  model,
 			}
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+
+			api := model.GetApiByResourceName("no-such-resource")
+			Expect(api).To(BeNil())
+
+			api = model.GetApiByResourceName(typeNamespacedName.String())
+			Expect(api).NotTo(BeNil())
+			Expect(api.DisplayName).To(Equal(displayName))
+			Expect(api.Description).To(Equal(description))
+			Expect(api.ApiId).To(Equal(apiId))
+			Expect(api.Version).To(Equal(parseVersion(version)))
+			Expect(api.Type).To(Equal(apiType))
+			// TODO: add test with system set
+			Expect(api.System).To(BeNil())
+			Expect(api.Annotations["structure.emeland.io/system-id"]).To(Equal("test-system-id"))
+
 		})
 	})
 })
