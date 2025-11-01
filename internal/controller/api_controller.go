@@ -60,7 +60,7 @@ func (r *APIReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	if err == nil {
 		err = r.Model.AddApi(convertAPI(api), req.NamespacedName.String(), r.Client.Status())
 		if err != nil {
-			log.Error(err, "could not add service to model")
+			log.Error(err, "could not add api to model")
 		}
 	} else if errors.IsNotFound(err) {
 		err = r.Model.DeleteApiByResourceName(req.NamespacedName.String())
@@ -81,17 +81,18 @@ func (r *APIReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func convertAPI(sys *v1alpha1.API) *model.API {
+func convertAPI(api *v1alpha1.API) *model.API {
 	newApi := &model.API{
-		DisplayName: sys.Spec.DisplayName,
-		Description: sys.Spec.Description,
-		Version:     parseVersion(sys.Spec.Version),
-		Type:        model.ParseApiType(sys.Spec.Type),
+		DisplayName: api.Spec.DisplayName,
+		Description: api.Spec.Description,
+		Version:     parseVersion(api.Spec.Version),
+		Type:        model.ParseApiType(api.Spec.Type),
+		System:      parseSystemRef(api.Spec.SystemId, &api.Spec.SystemRef),
 	}
 
 	// parse ID if set
-	if sys.Spec.ApiId != "" {
-		uid, err := uuid.Parse(sys.Spec.ApiId)
+	if api.Spec.ApiId != "" {
+		uid, err := uuid.Parse(api.Spec.ApiId)
 		if err == nil {
 			newApi.ApiId = uid
 		}
@@ -99,7 +100,7 @@ func convertAPI(sys *v1alpha1.API) *model.API {
 
 	// transfer annotations
 	newApi.Annotations = make(map[string]string)
-	for key, value := range sys.Annotations {
+	for key, value := range api.Annotations {
 		newApi.Annotations[key] = value
 	}
 

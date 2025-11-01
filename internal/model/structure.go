@@ -144,7 +144,7 @@ type System struct {
 
 type SystemRef struct {
 	System    *System
-	SystemID  uuid.UUID
+	SystemId  uuid.UUID
 	SystemRef *EntityVersion
 }
 
@@ -204,6 +204,7 @@ type Component struct {
 	Description  string
 	ComponentId  uuid.UUID
 	Version      Version
+	System       *SystemRef
 	Consumes     []ApiRef
 	Provides     []ApiRef
 	Annotations  map[string]string

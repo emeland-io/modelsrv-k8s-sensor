@@ -209,6 +209,7 @@ func (in *ComponentList) DeepCopyObject() runtime.Object {
 func (in *ComponentSpec) DeepCopyInto(out *ComponentSpec) {
 	*out = *in
 	out.Version = in.Version
+	out.SystemRef = in.SystemRef
 	if in.Consumes != nil {
 		in, out := &in.Consumes, &out.Consumes
 		*out = make([]APIRef, len(*in))

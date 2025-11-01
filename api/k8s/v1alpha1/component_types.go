@@ -21,6 +21,7 @@ import (
 )
 
 // ComponentSpec defines the desired state of Component
+// +kubebuilder:validation:ExactlyOneOf=SystemId;SystemRef
 type ComponentSpec struct {
 	// DisplayName is the human friendly name of the component
 	DisplayName string `json:"displayName"`
@@ -29,8 +30,20 @@ type ComponentSpec struct {
 	// +optional
 	Description string `json:"description,omitempty"`
 
+	// ComponentId is the unique identifier of the Component. It is optional to allow
+	// the controller to assign an ID automatically if not provided by the user.
+	// +optional
+	ComponentId string `json:"componentId,omitempty"`
+
 	// Version is the version of the component
 	Version Version `json:"version"`
+
+	// System is a reference to the system by name and version, that this API belongs to. Either SystemRef or SystemId must be set.
+	SystemRef VersionRef `json:"systemRef"`
+
+	// SystemId is a reference to the system by UUID, that this API belongs to. Either SystemRef or SystemId must be set.
+	// +optional
+	SystemId string `json:"systemId,omitempty"`
 
 	// Consumes lists the APIs consumed by this component
 	Consumes []APIRef `json:"consumes"`

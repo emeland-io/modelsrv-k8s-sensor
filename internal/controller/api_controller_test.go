@@ -36,13 +36,13 @@ import (
 var _ = Describe("API Controller", func() {
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
-		const displayName = "Test System"
+		const displayName = "Test API"
 		apiId := uuid.New()
 		apiType := model.ParseApiType("OpenAPI")
 		const availableDate = "2023-01-01"
 		const deprecatedDate = "2024-01-01"
 		const terminatedDate = "2025-01-01"
-		const description = "This is a test system."
+		const description = "This is a test API."
 		version := v1alpha1.Version{
 			Version:        "1.0.0",
 			AvailableFrom:  availableDate,

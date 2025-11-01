@@ -80,12 +80,12 @@ func TestSystemRef(t *testing.T) {
 
 	sysRef := SystemRef{
 		System:    system,
-		SystemID:  sysId,
+		SystemId:  sysId,
 		SystemRef: ev,
 	}
 
 	assert.Equal(t, system, sysRef.System)
-	assert.Equal(t, sysId, sysRef.SystemID)
+	assert.Equal(t, sysId, sysRef.SystemId)
 	assert.Equal(t, ev, sysRef.SystemRef)
 }
 

@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 
+	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -27,41 +28,57 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	structurev1alpha1 "gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
+	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
+	"gitlab.com/emeland/k8s-model/internal/model"
 )
 
 var _ = Describe("Component Controller", func() {
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
+		const displayName = "Test Component"
+		componentId := uuid.New()
+		const availableDate = "2023-01-01"
+		const deprecatedDate = "2024-01-01"
+		const terminatedDate = "2025-01-01"
+		const description = "This is a test Component."
+		version := v1alpha1.Version{
+			Version:        "1.0.0",
+			AvailableFrom:  availableDate,
+			DeprecatedFrom: deprecatedDate,
+			TerminatedFrom: terminatedDate,
+		}
 
 		ctx := context.Background()
 
 		typeNamespacedName := types.NamespacedName{
 			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
+			Namespace: "default",
 		}
-		component := &structurev1alpha1.Component{}
+		component := &v1alpha1.Component{}
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind Component")
 			err := k8sClient.Get(ctx, typeNamespacedName, component)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &structurev1alpha1.Component{
+				resource := &v1alpha1.Component{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
-					},
-					Spec: structurev1alpha1.ComponentSpec{
-						DisplayName: "Test Component",
-						Version: structurev1alpha1.Version{
-							Version: "1.0.0",
+						Annotations: map[string]string{
+							"structure.emeland.io/system-id": "test-system-id",
 						},
-						Consumes: []structurev1alpha1.APIRef{
+					},
+					Spec: v1alpha1.ComponentSpec{
+						DisplayName: displayName,
+						Description: description,
+						ComponentId: componentId.String(),
+						Version:     version,
+						Consumes: []v1alpha1.APIRef{
 							{
 								ApiId: "test-consumed-api",
 							},
 						},
-						Provides: []structurev1alpha1.APIRef{
+						Provides: []v1alpha1.APIRef{
 							{
 								ApiId: "test-provided-api",
 							},
@@ -74,7 +91,7 @@ var _ = Describe("Component Controller", func() {
 
 		AfterEach(func() {
 			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &structurev1alpha1.Component{}
+			resource := &v1alpha1.Component{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -83,17 +100,33 @@ var _ = Describe("Component Controller", func() {
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
+			model, err := model.NewModel()
+			Expect(err).NotTo(HaveOccurred())
+
 			controllerReconciler := &ComponentReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
+				Model:  model,
 			}
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+
+			comp := model.GetComponentByResourceName("no-such-resource")
+			Expect(comp).To(BeNil())
+
+			comp = model.GetComponentByResourceName(typeNamespacedName.String())
+			Expect(comp).NotTo(BeNil())
+			Expect(comp.DisplayName).To(Equal(displayName))
+			Expect(comp.Description).To(Equal(description))
+			Expect(comp.ComponentId).To(Equal(componentId))
+			Expect(comp.Version).To(Equal(parseVersion(version)))
+			// TODO: add test with system set
+			Expect(comp.System).To(BeNil())
+			Expect(comp.Annotations["structure.emeland.io/system-id"]).To(Equal("test-system-id"))
+
 		})
 	})
 })

@@ -18,19 +18,24 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/google/uuid"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
+	logr "sigs.k8s.io/controller-runtime/pkg/log"
 
-	structurev1alpha1 "gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
+	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
+	"gitlab.com/emeland/k8s-model/internal/model"
 )
 
 // ComponentReconciler reconciles a Component object
 type ComponentReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	Model  model.Model
 }
 
 // +kubebuilder:rbac:groups=structure.emeland.io,resources=components,verbs=get;list;watch;create;update;patch;delete
@@ -47,9 +52,24 @@ type ComponentReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/reconcile
 func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	log := logr.FromContext(ctx)
 
-	// TODO(user): your logic here
+	comp := &v1alpha1.Component{}
+	err := r.Get(ctx, req.NamespacedName, comp)
+
+	if err == nil {
+		err = r.Model.AddComponent(convertComponent(comp), req.NamespacedName.String(), r.Client.Status())
+		if err != nil {
+			log.Error(err, "could not add component to model")
+		}
+	} else if errors.IsNotFound(err) {
+		err = r.Model.DeleteApiByResourceName(req.NamespacedName.String())
+		if err == model.ApiNotFoundError {
+			err = nil // ignore a resource that is not even in the model
+		}
+	} else {
+		log.Error(err, fmt.Sprintf("could not get Component %s", req.NamespacedName))
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -57,6 +77,31 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 // SetupWithManager sets up the controller with the Manager.
 func (r *ComponentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&structurev1alpha1.Component{}).
+		For(&v1alpha1.Component{}).
 		Complete(r)
+}
+
+func convertComponent(comp *v1alpha1.Component) *model.Component {
+	newComp := &model.Component{
+		DisplayName: comp.Spec.DisplayName,
+		Description: comp.Spec.Description,
+		Version:     parseVersion(comp.Spec.Version),
+		System:      parseSystemRef(comp.Spec.SystemId, &comp.Spec.SystemRef),
+	}
+
+	// parse ID if set
+	if comp.Spec.ComponentId != "" {
+		uid, err := uuid.Parse(comp.Spec.ComponentId)
+		if err == nil {
+			newComp.ComponentId = uid
+		}
+	}
+
+	// transfer annotations
+	newComp.Annotations = make(map[string]string)
+	for key, value := range comp.Annotations {
+		newComp.Annotations[key] = value
+	}
+
+	return newComp
 }

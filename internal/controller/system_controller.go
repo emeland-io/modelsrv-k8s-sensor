@@ -51,7 +51,7 @@ func (r *SystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if err == nil {
 		err = r.Model.AddSystem(convertSystem(sys), req.NamespacedName.String(), r.Client.Status())
 		if err != nil {
-			log.Error(err, "could not add service to model")
+			log.Error(err, "could not add system to model")
 		}
 	} else if errors.IsNotFound(err) {
 		err = r.Model.DeleteSystemByResourceName(req.NamespacedName.String())

@@ -3,6 +3,7 @@ package controller
 import (
 	"time"
 
+	"github.com/google/uuid"
 	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
 	"gitlab.com/emeland/k8s-model/internal/model"
 )
@@ -28,4 +29,29 @@ func parseDate(dateStr string) *time.Time {
 		return nil
 	}
 	return &t
+}
+
+// parseSystemRef parses a SystemRef from either a systemId or a VersionRef
+func parseSystemRef(sysId string, sysRef *v1alpha1.VersionRef) *model.SystemRef {
+	if sysId != "" {
+		uid, err := uuid.Parse(sysId)
+		if err == nil {
+			return &model.SystemRef{
+				SystemId: uid,
+			}
+		}
+	}
+	if sysRef != nil {
+		if sysRef.Name != "" && sysRef.Version != "" {
+			return &model.SystemRef{
+				SystemRef: &model.EntityVersion{
+					Name:    sysRef.Name,
+					Version: sysRef.Version,
+				},
+			}
+		}
+	}
+
+	// no valid reference found
+	return nil
 }
