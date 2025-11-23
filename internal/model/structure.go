@@ -214,7 +214,7 @@ type Component struct {
 type SystemInstance struct {
 	DisplayName  string
 	InstanceId   uuid.UUID
-	SystemRef    SystemRef
+	SystemRef    *SystemRef
 	Annotations  map[string]string
 	statusWriter client.SubResourceWriter
 }
@@ -222,7 +222,6 @@ type SystemInstance struct {
 type SystemInstanceRef struct {
 	SystemInstance *SystemInstance
 	InstanceId     uuid.UUID
-	InstanceRef    *EntityVersion
 }
 
 type APIInstance struct {
@@ -230,7 +229,7 @@ type APIInstance struct {
 	InstanceId     uuid.UUID
 	ApiRef         ApiRef
 	SystemInstance *SystemInstanceRef
-	statusWriter   client.SubResourceWriter
+	Annotations    map[string]string
 }
 
 type ComponentInstance struct {
@@ -238,7 +237,7 @@ type ComponentInstance struct {
 	InstanceId     uuid.UUID
 	ComponentRef   EntityVersion
 	SystemInstance *SystemInstanceRef
-	statusWriter   client.SubResourceWriter
+	Annotations    map[string]string
 }
 
 // AddSystem implements Model.
@@ -297,8 +296,6 @@ func (m *modelData) AddApi(api *API, name string, writer client.SubResourceWrite
 
 // AddApiInstance implements Model.
 func (m *modelData) AddApiInstance(instance *APIInstance, name string, writer client.SubResourceWriter) error {
-	instance.statusWriter = writer
-
 	m.ApiInstancesByName[name] = instance
 	if instance.InstanceId != uuid.Nil {
 		m.APIInstancesByUUID[instance.InstanceId] = instance
@@ -319,8 +316,6 @@ func (m *modelData) AddComponent(comp *Component, name string, writer client.Sub
 
 // AddComponentInstance implements Model.
 func (m *modelData) AddComponentInstance(instance *ComponentInstance, name string, writer client.SubResourceWriter) error {
-	instance.statusWriter = writer
-
 	m.ComponentInstancesByName[name] = instance
 	if instance.InstanceId != uuid.Nil {
 		m.ComponentInstancesByUUID[instance.InstanceId] = instance
@@ -333,8 +328,17 @@ func (m *modelData) AddSystemInstance(instance *SystemInstance, name string, wri
 	instance.statusWriter = writer
 
 	m.SystemInstancesByName[name] = instance
+
 	if instance.InstanceId != uuid.Nil {
 		m.SystemInstancesByUUID[instance.InstanceId] = instance
+	}
+
+	if instance.SystemRef != nil && instance.SystemRef.SystemId != uuid.Nil {
+		system, exists := m.SystemsByUUID[instance.SystemRef.SystemId]
+		if exists {
+			instance.SystemRef.System = system
+		}
+		// TODO: create finding: System not found
 	}
 	return nil
 }
