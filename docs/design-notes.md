@@ -2,7 +2,7 @@
 
 Some notes on why things they are, and the thoughts that went into the K8s encoding
 
-## Desging Goals
+## Design Goals
 
 * Encode as little as possible in the actual entities. Describe Systems through structure.
 * Do not encode relationship in Spec of entity, unless required for composition. Create associations between entities of different technologies or domains of expertise through annotations instead.
@@ -23,7 +23,7 @@ Findings are made available only through the OpenAPI interface. They are not cre
 
 ## Instantiation
 
-### System 
+### System
 
 * A system that is marked as abstract may not be referenced by a SystemInstance
 

@@ -161,7 +161,7 @@ func TestComponent(t *testing.T) {
 func TestSystemInstance(t *testing.T) {
 	instanceId := uuid.New()
 	system := &System{DisplayName: "test-system"}
-	sysRef := SystemRef{System: system}
+	sysRef := &SystemRef{System: system}
 
 	instance := SystemInstance{
 		DisplayName: "test-instance",
@@ -292,7 +292,7 @@ func TestSystemInstanceOperations(t *testing.T) {
 	instance := &SystemInstance{
 		DisplayName: "test-instance",
 		InstanceId:  instanceId,
-		SystemRef:   sysRef,
+		SystemRef:   &sysRef,
 	}
 
 	// Test getting non-existent instance
