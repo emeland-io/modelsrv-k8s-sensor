@@ -114,10 +114,13 @@ var _ = Describe("Component Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			comp := model.GetComponentByResourceName("no-such-resource")
-			Expect(comp).To(BeNil())
+			compInfo := model.GetComponentByResourceName("no-such-resource")
+			Expect(compInfo).To(BeNil())
 
-			comp = model.GetComponentByResourceName(typeNamespacedName.String())
+			compInfo = model.GetComponentByResourceName(typeNamespacedName.String())
+			Expect(compInfo).NotTo(BeNil())
+
+			comp := compInfo.Component
 			Expect(comp).NotTo(BeNil())
 			Expect(comp.DisplayName).To(Equal(displayName))
 			Expect(comp.Description).To(Equal(description))

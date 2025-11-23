@@ -31,6 +31,7 @@ import (
 	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
 	structurev1alpha1 "gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
 	"gitlab.com/emeland/k8s-model/internal/model"
+	modelsrv "gitlab.com/emeland/modelsrv/pkg/model"
 )
 
 var _ = Describe("API Controller", func() {
@@ -38,7 +39,7 @@ var _ = Describe("API Controller", func() {
 		const resourceName = "test-resource"
 		const displayName = "Test API"
 		apiId := uuid.New()
-		apiType := model.ParseApiType("OpenAPI")
+		apiType := modelsrv.ParseApiType("OpenAPI")
 		const availableDate = "2023-01-01"
 		const deprecatedDate = "2024-01-01"
 		const terminatedDate = "2025-01-01"
@@ -107,11 +108,13 @@ var _ = Describe("API Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			api := model.GetApiByResourceName("no-such-resource")
-			Expect(api).To(BeNil())
+			apiInfo := model.GetApiByResourceName("no-such-resource")
+			Expect(apiInfo).To(BeNil())
 
-			api = model.GetApiByResourceName(typeNamespacedName.String())
-			Expect(api).NotTo(BeNil())
+			apiInfo = model.GetApiByResourceName(typeNamespacedName.String())
+			Expect(apiInfo).NotTo(BeNil())
+
+			api := apiInfo.API
 			Expect(api.DisplayName).To(Equal(displayName))
 			Expect(api.Description).To(Equal(description))
 			Expect(api.ApiId).To(Equal(apiId))

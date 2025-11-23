@@ -114,10 +114,13 @@ var _ = Describe("SystemInstance Controller", func() {
 			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
-			sysInstance := model.GetSystemInstanceByResourceName("no-such-resource")
-			Expect(sysInstance).To(BeNil())
+			sysInstanceInfo := model.GetSystemInstanceByResourceName("no-such-resource")
+			Expect(sysInstanceInfo).To(BeNil())
 
-			sysInstance = model.GetSystemInstanceByResourceName(typeNamespacedName.String())
+			sysInstanceInfo = model.GetSystemInstanceByResourceName(typeNamespacedName.String())
+			Expect(sysInstanceInfo).NotTo(BeNil())
+
+			sysInstance := sysInstanceInfo.SystemInstance
 			Expect(sysInstance).NotTo(BeNil())
 			Expect(sysInstance.DisplayName).To(Equal(displayName))
 			Expect(sysInstance.InstanceId).To(Equal(instanceId))

@@ -29,6 +29,7 @@ import (
 
 	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
 	"gitlab.com/emeland/k8s-model/internal/model"
+	modelsrv "gitlab.com/emeland/modelsrv/pkg/model"
 )
 
 // SystemReconciler reconciles a System object
@@ -55,7 +56,7 @@ func (r *SystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 	} else if errors.IsNotFound(err) {
 		err = r.Model.DeleteSystemByResourceName(req.NamespacedName.String())
-		if err == model.SystemNotFoundError {
+		if err == modelsrv.SystemNotFoundError {
 			err = nil // ignore a resource that is not even in the model
 		}
 	} else {
@@ -73,8 +74,8 @@ func (r *SystemReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func convertSystem(sys *v1alpha1.System) *model.System {
-	newSys := &model.System{
+func convertSystem(sys *v1alpha1.System) *modelsrv.System {
+	newSys := &modelsrv.System{
 		DisplayName: sys.Spec.DisplayName,
 		Description: sys.Spec.Description,
 	}

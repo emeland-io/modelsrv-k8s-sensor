@@ -2,12 +2,14 @@ package model
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	modelsrv "gitlab.com/emeland/modelsrv/pkg/model"
 )
 
+var ContextNotFoundError error = fmt.Errorf("Context not found")
 var SystemNotFoundError error = fmt.Errorf("System not found")
 var ApiNotFoundError error = fmt.Errorf("API not found")
 var ComponentNotFoundError error = fmt.Errorf("Component not found")
@@ -16,239 +18,162 @@ var ApiInstanceNotFoundError error = fmt.Errorf("API Instance not found")
 var ComponentInstanceNotFoundError error = fmt.Errorf("Component Instance not found")
 
 type Model interface {
-	AddSystem(sys *System, name string, writer client.SubResourceWriter) error
+	AddContext(sys *modelsrv.Context, name string, writer client.SubResourceWriter) error
+	DeleteContextByResourceName(s string) error
+	DeleteContextById(id uuid.UUID) error
+	GetContextById(id uuid.UUID) *ContextInfo
+
+	AddSystem(sys *modelsrv.System, name string, writer client.SubResourceWriter) error
 	DeleteSystemByResourceName(s string) error
-	GetSystemByResourceName(s string) *System
-	GetSystemById(id uuid.UUID) *System
+	DeleteSystemById(id uuid.UUID) error
+	GetSystemByResourceName(s string) *SystemInfo
+	GetSystemById(id uuid.UUID) *SystemInfo
 
-	AddApi(api *API, name string, writer client.SubResourceWriter) error
+	AddApi(api *modelsrv.API, name string, writer client.SubResourceWriter) error
 	DeleteApiByResourceName(s string) error
-	GetApiByResourceName(s string) *API
-	GetApiById(id uuid.UUID) *API
+	DeleteApiById(id uuid.UUID) error
+	GetApiByResourceName(s string) *APIInfo
+	GetApiById(id uuid.UUID) *APIInfo
 
-	AddComponent(comp *Component, name string, writer client.SubResourceWriter) error
+	AddComponent(comp *modelsrv.Component, name string, writer client.SubResourceWriter) error
 	DeleteComponentByResourceName(s string) error
-	GetComponentByResourceName(s string) *Component
-	GetComponentById(id uuid.UUID) *Component
+	DeleteComponentById(id uuid.UUID) error
+	GetComponentByResourceName(s string) *ComponentInfo
+	GetComponentById(id uuid.UUID) *ComponentInfo
 
-	AddSystemInstance(instance *SystemInstance, name string, writer client.SubResourceWriter) error
+	AddSystemInstance(instance *modelsrv.SystemInstance, name string, writer client.SubResourceWriter) error
 	DeleteSystemInstanceByResourceName(s string) error
-	GetSystemInstanceByResourceName(s string) *SystemInstance
-	GetSystemInstanceById(id uuid.UUID) *SystemInstance
+	DeleteSystemInstanceById(id uuid.UUID) error
+	GetSystemInstanceByResourceName(s string) *SystemInstanceInfo
+	GetSystemInstanceById(id uuid.UUID) *SystemInstanceInfo
 
-	AddApiInstance(instance *APIInstance, name string, writer client.SubResourceWriter) error
+	AddApiInstance(instance *modelsrv.APIInstance, name string, writer client.SubResourceWriter) error
 	DeleteApiInstanceByResourceName(s string) error
-	GetApiInstanceByResourceName(s string) *APIInstance
-	GetApiInstanceById(id uuid.UUID) *APIInstance
+	DeleteApiInstanceById(id uuid.UUID) error
+	GetApiInstanceByResourceName(s string) *APIInstanceInfo
+	GetApiInstanceById(id uuid.UUID) *APIInstanceInfo
 
-	AddComponentInstance(instance *ComponentInstance, name string, writer client.SubResourceWriter) error
+	AddComponentInstance(instance *modelsrv.ComponentInstance, name string, writer client.SubResourceWriter) error
 	DeleteComponentInstanceByResourceName(s string) error
-	GetComponentInstanceByResourceName(s string) *ComponentInstance
-	GetComponentInstanceById(id uuid.UUID) *ComponentInstance
+	GetComponentInstanceByResourceName(s string) *ComponentInstanceInfo
+	GetComponentInstanceById(id uuid.UUID) *ComponentInstanceInfo
 }
 
 type modelData struct {
-	SystemsByName    map[string]*System
-	APIsByName       map[string]*API
-	ComponentsByName map[string]*Component
+	baseModel      modelsrv.Model
+	ContextsByUUID map[uuid.UUID]*ContextInfo
+	ContextsByName map[string]*ContextInfo
 
-	SystemsByUUID    map[uuid.UUID]*System
-	APIsByUUID       map[uuid.UUID]*API
-	ComponentsByUUID map[uuid.UUID]*Component
+	SystemsByName    map[string]*SystemInfo
+	APIsByName       map[string]*APIInfo
+	ComponentsByName map[string]*ComponentInfo
 
-	SystemInstancesByName    map[string]*SystemInstance
-	ApiInstancesByName       map[string]*APIInstance
-	ComponentInstancesByName map[string]*ComponentInstance
+	SystemsByUUID    map[uuid.UUID]*SystemInfo
+	APIsByUUID       map[uuid.UUID]*APIInfo
+	ComponentsByUUID map[uuid.UUID]*ComponentInfo
 
-	SystemInstancesByUUID    map[uuid.UUID]*SystemInstance
-	APIInstancesByUUID       map[uuid.UUID]*APIInstance
-	ComponentInstancesByUUID map[uuid.UUID]*ComponentInstance
+	SystemInstancesByName    map[string]*SystemInstanceInfo
+	ApiInstancesByName       map[string]*APIInstanceInfo
+	ComponentInstancesByName map[string]*ComponentInstanceInfo
+
+	SystemInstancesByUUID    map[uuid.UUID]*SystemInstanceInfo
+	APIInstancesByUUID       map[uuid.UUID]*APIInstanceInfo
+	ComponentInstancesByUUID map[uuid.UUID]*ComponentInstanceInfo
 }
 
 // ensure Model interface is implemented correctly
 var _ Model = (*modelData)(nil)
 
 func NewModel() (*modelData, error) {
+	base, error := modelsrv.NewModel()
+	if error != nil {
+		return nil, error
+	}
+
 	model := &modelData{
-		SystemsByName:    make(map[string]*System),
-		APIsByName:       make(map[string]*API),
-		ComponentsByName: make(map[string]*Component),
+		baseModel:      base,
+		ContextsByUUID: make(map[uuid.UUID]*ContextInfo),
+		ContextsByName: make(map[string]*ContextInfo),
 
-		SystemsByUUID:    make(map[uuid.UUID]*System),
-		APIsByUUID:       make(map[uuid.UUID]*API),
-		ComponentsByUUID: make(map[uuid.UUID]*Component),
+		SystemsByName:    make(map[string]*SystemInfo),
+		APIsByName:       make(map[string]*APIInfo),
+		ComponentsByName: make(map[string]*ComponentInfo),
 
-		SystemInstancesByName:    make(map[string]*SystemInstance),
-		ApiInstancesByName:       make(map[string]*APIInstance),
-		ComponentInstancesByName: make(map[string]*ComponentInstance),
+		SystemsByUUID:    make(map[uuid.UUID]*SystemInfo),
+		APIsByUUID:       make(map[uuid.UUID]*APIInfo),
+		ComponentsByUUID: make(map[uuid.UUID]*ComponentInfo),
 
-		SystemInstancesByUUID:    make(map[uuid.UUID]*SystemInstance),
-		APIInstancesByUUID:       make(map[uuid.UUID]*APIInstance),
-		ComponentInstancesByUUID: make(map[uuid.UUID]*ComponentInstance),
+		SystemInstancesByName:    make(map[string]*SystemInstanceInfo),
+		ApiInstancesByName:       make(map[string]*APIInstanceInfo),
+		ComponentInstancesByName: make(map[string]*ComponentInstanceInfo),
+
+		SystemInstancesByUUID:    make(map[uuid.UUID]*SystemInstanceInfo),
+		APIInstancesByUUID:       make(map[uuid.UUID]*APIInstanceInfo),
+		ComponentInstancesByUUID: make(map[uuid.UUID]*ComponentInstanceInfo),
 	}
 
 	return model, nil
 }
 
-type Version struct {
-	Version        string
-	AvailableFrom  *time.Time
-	DeprecatedFrom *time.Time
-	TerminatedFrom *time.Time
-}
-
-func (v Version) IsEqual(other Version) bool {
-	if v.Version != other.Version {
-		return false
-	}
-
-	if (v.AvailableFrom == nil) != (other.AvailableFrom == nil) {
-		return false
-	}
-	if v.AvailableFrom != nil && !v.AvailableFrom.Equal(*other.AvailableFrom) {
-		return false
-	}
-
-	if (v.DeprecatedFrom == nil) != (other.DeprecatedFrom == nil) {
-		return false
-	}
-	if v.DeprecatedFrom != nil && !v.DeprecatedFrom.Equal(*other.DeprecatedFrom) {
-		return false
-	}
-
-	if (v.TerminatedFrom == nil) != (other.TerminatedFrom == nil) {
-		return false
-	}
-	if v.TerminatedFrom != nil && !v.TerminatedFrom.Equal(*other.TerminatedFrom) {
-		return false
-	}
-
-	return true
-}
-
-type EntityVersion struct {
-	Name    string
-	Version string
-}
-
-type System struct {
-	DisplayName  string
-	Description  string
-	SystemId     uuid.UUID
-	Version      Version
-	Abstract     bool
-	Parent       SystemRef
-	Annotations  map[string]string
+type ContextInfo struct {
+	Context      *modelsrv.Context
+	resourceName string
 	statusWriter client.SubResourceWriter
 }
 
-type SystemRef struct {
-	System    *System
-	SystemId  uuid.UUID
-	SystemRef *EntityVersion
-}
-
-type ApiType int
-
-const (
-	Unknown ApiType = iota
-	Other
-	GraphQL
-	gRPC
-	OpenAPI
-)
-
-var ApiTypeValues = map[ApiType]string{
-	Unknown: "Unknown",
-	OpenAPI: "OpenAPI",
-	GraphQL: "GraphQL",
-	gRPC:    "gRPC",
-	Other:   "Other",
-}
-
-func ParseApiType(s string) ApiType {
-	for key, val := range ApiTypeValues {
-		if val == s {
-			return key
-		}
-	}
-	return Unknown
-}
-
-func (t ApiType) String() string {
-	if val, ok := ApiTypeValues[t]; ok {
-		return val
-	}
-	return ApiTypeValues[Unknown]
-}
-
-type API struct {
-	DisplayName  string
-	Description  string
-	ApiId        uuid.UUID
-	Version      Version
-	Type         ApiType
-	System       *SystemRef
-	Annotations  map[string]string
+type SystemInfo struct {
+	System       *modelsrv.System
+	resourceName string
 	statusWriter client.SubResourceWriter
 }
 
-type ApiRef struct {
-	API    *API
-	ApiID  uuid.UUID
-	ApiRef *EntityVersion
-}
-
-type Component struct {
-	DisplayName  string
-	Description  string
-	ComponentId  uuid.UUID
-	Version      Version
-	System       *SystemRef
-	Consumes     []ApiRef
-	Provides     []ApiRef
-	Annotations  map[string]string
+type APIInfo struct {
+	API          *modelsrv.API
+	resourceName string
 	statusWriter client.SubResourceWriter
 }
 
-type SystemInstance struct {
-	DisplayName  string
-	InstanceId   uuid.UUID
-	SystemRef    *SystemRef
-	Annotations  map[string]string
+type ComponentInfo struct {
+	Component    *modelsrv.Component
+	resourceName string
 	statusWriter client.SubResourceWriter
 }
 
-type SystemInstanceRef struct {
-	SystemInstance *SystemInstance
-	InstanceId     uuid.UUID
+type SystemInstanceInfo struct {
+	SystemInstance *modelsrv.SystemInstance
+	resourceName   string
+	statusWriter   client.SubResourceWriter
 }
 
-type APIInstance struct {
-	DisplayName    string
-	InstanceId     uuid.UUID
-	ApiRef         ApiRef
-	SystemInstance *SystemInstanceRef
-	Annotations    map[string]string
+type APIInstanceInfo struct {
+	APIInstance  *modelsrv.APIInstance
+	resourceName string
+	statusWriter client.SubResourceWriter
 }
 
-type ComponentInstance struct {
-	DisplayName    string
-	InstanceId     uuid.UUID
-	ComponentRef   EntityVersion
-	SystemInstance *SystemInstanceRef
-	Annotations    map[string]string
+type ComponentInstanceInfo struct {
+	ComponentInstance *modelsrv.ComponentInstance
+	resourceName      string
+	statusWriter      client.SubResourceWriter
 }
 
 // AddSystem implements Model.
-func (m *modelData) AddSystem(sys *System, name string, statusWriter client.SubResourceWriter) error {
-	sys.statusWriter = statusWriter
+func (m *modelData) AddSystem(sys *modelsrv.System, name string, statusWriter client.SubResourceWriter) error {
 
-	m.SystemsByName[name] = sys
+	err := m.baseModel.AddSystem(sys)
+	if err != nil {
+		return err
+	}
 
-	// parse parent ref if set
+	info := &SystemInfo{
+		System:       sys,
+		resourceName: name,
+		statusWriter: statusWriter,
+	}
+
+	m.SystemsByName[name] = info
 	if sys.SystemId != uuid.Nil {
-		m.SystemsByUUID[sys.SystemId] = sys
+		m.SystemsByUUID[sys.SystemId] = info
 	}
 
 	return nil
@@ -256,17 +181,31 @@ func (m *modelData) AddSystem(sys *System, name string, statusWriter client.SubR
 
 // DeleteSystemByResourceName implements Model.
 func (m *modelData) DeleteSystemByResourceName(s string) error {
-	_, exists := m.SystemsByName[s]
+	sys, exists := m.SystemsByName[s]
 	if !exists {
 		return SystemNotFoundError
 	}
 
+	// remove system from by-name map even if error occurs, to clean up
 	delete(m.SystemsByName, s)
+
+	id := sys.System.SystemId
+	if id != uuid.Nil {
+		err := m.baseModel.DeleteSystemById(id)
+
+		// remove system-info from by-id map even if error occurs, to clean up
+		delete(m.SystemsByUUID, id)
+		if err != nil {
+
+			return err
+		}
+	}
+
 	return nil
 }
 
 // GetSystemByResourceName implements Model.
-func (m *modelData) GetSystemByResourceName(s string) *System {
+func (m *modelData) GetSystemByResourceName(s string) *SystemInfo {
 	system, exists := m.SystemsByName[s]
 	if !exists {
 		return nil
@@ -275,7 +214,7 @@ func (m *modelData) GetSystemByResourceName(s string) *System {
 }
 
 // GetSystemById implements Model.
-func (m *modelData) GetSystemById(id uuid.UUID) *System {
+func (m *modelData) GetSystemById(id uuid.UUID) *SystemInfo {
 	system, exists := m.SystemsByUUID[id]
 	if !exists {
 		return nil
@@ -284,132 +223,188 @@ func (m *modelData) GetSystemById(id uuid.UUID) *System {
 }
 
 // AddApi implements Model.
-func (m *modelData) AddApi(api *API, name string, writer client.SubResourceWriter) error {
-	api.statusWriter = writer
+func (m *modelData) AddApi(api *modelsrv.API, name string, writer client.SubResourceWriter) error {
+	err := m.baseModel.AddApi(api)
+	if err != nil {
+		return err
+	}
 
-	m.APIsByName[name] = api
+	info := &APIInfo{
+		API:          api,
+		resourceName: name,
+		statusWriter: writer,
+	}
+
+	m.APIsByName[name] = info
 	if api.ApiId != uuid.Nil {
-		m.APIsByUUID[api.ApiId] = api
+		m.APIsByUUID[api.ApiId] = info
 	}
 	return nil
 }
 
 // AddApiInstance implements Model.
-func (m *modelData) AddApiInstance(instance *APIInstance, name string, writer client.SubResourceWriter) error {
-	m.ApiInstancesByName[name] = instance
+func (m *modelData) AddApiInstance(instance *modelsrv.APIInstance, name string, writer client.SubResourceWriter) error {
+	err := m.baseModel.AddApiInstance(instance)
+	if err != nil {
+		return err
+	}
+
+	info := &APIInstanceInfo{
+		APIInstance:  instance,
+		resourceName: name,
+		statusWriter: writer,
+	}
+
+	m.ApiInstancesByName[name] = info
 	if instance.InstanceId != uuid.Nil {
-		m.APIInstancesByUUID[instance.InstanceId] = instance
+		m.APIInstancesByUUID[instance.InstanceId] = info
 	}
 	return nil
 }
 
 // AddComponent implements Model.
-func (m *modelData) AddComponent(comp *Component, name string, writer client.SubResourceWriter) error {
-	comp.statusWriter = writer
+func (m *modelData) AddComponent(comp *modelsrv.Component, name string, writer client.SubResourceWriter) error {
+	err := m.baseModel.AddComponent(comp)
+	if err != nil {
+		return err
+	}
 
-	m.ComponentsByName[name] = comp
+	info := &ComponentInfo{
+		Component:    comp,
+		resourceName: name,
+		statusWriter: writer,
+	}
+
+	m.ComponentsByName[name] = info
 	if comp.ComponentId != uuid.Nil {
-		m.ComponentsByUUID[comp.ComponentId] = comp
+		m.ComponentsByUUID[comp.ComponentId] = info
 	}
 	return nil
 }
 
 // AddComponentInstance implements Model.
-func (m *modelData) AddComponentInstance(instance *ComponentInstance, name string, writer client.SubResourceWriter) error {
-	m.ComponentInstancesByName[name] = instance
+func (m *modelData) AddComponentInstance(instance *modelsrv.ComponentInstance, name string, writer client.SubResourceWriter) error {
+	err := m.baseModel.AddComponentInstance(instance)
+	if err != nil {
+		return err
+	}
+
+	info := &ComponentInstanceInfo{
+		ComponentInstance: instance,
+		resourceName:      name,
+		statusWriter:      writer,
+	}
+
+	m.ComponentInstancesByName[name] = info
 	if instance.InstanceId != uuid.Nil {
-		m.ComponentInstancesByUUID[instance.InstanceId] = instance
+		m.ComponentInstancesByUUID[instance.InstanceId] = info
 	}
 	return nil
 }
 
 // AddSystemInstance implements Model.
-func (m *modelData) AddSystemInstance(instance *SystemInstance, name string, writer client.SubResourceWriter) error {
-	instance.statusWriter = writer
+func (m *modelData) AddSystemInstance(instance *modelsrv.SystemInstance, name string, writer client.SubResourceWriter) error {
+	err := m.baseModel.AddSystemInstance(instance)
+	if err != nil {
+		return err
+	}
 
-	m.SystemInstancesByName[name] = instance
+	info := &SystemInstanceInfo{
+		SystemInstance: instance,
+		resourceName:   name,
+		statusWriter:   writer,
+	}
 
+	m.SystemInstancesByName[name] = info
 	if instance.InstanceId != uuid.Nil {
-		m.SystemInstancesByUUID[instance.InstanceId] = instance
+		m.SystemInstancesByUUID[instance.InstanceId] = info
 	}
 
-	if instance.SystemRef != nil && instance.SystemRef.SystemId != uuid.Nil {
-		system, exists := m.SystemsByUUID[instance.SystemRef.SystemId]
-		if exists {
-			instance.SystemRef.System = system
-		}
-		// TODO: create finding: System not found
-	}
 	return nil
 }
 
 // DeleteApiByResourceName implements Model.
 func (m *modelData) DeleteApiByResourceName(s string) error {
-	api, exists := m.APIsByName[s]
+	apiInfo, exists := m.APIsByName[s]
 	if !exists {
 		return ApiNotFoundError
 	}
+
+	err := m.baseModel.DeleteApiById(apiInfo.API.ApiId)
+
 	delete(m.APIsByName, s)
-	if api.ApiId != uuid.Nil {
-		delete(m.APIsByUUID, api.ApiId)
+	if apiInfo.API.ApiId != uuid.Nil {
+		delete(m.APIsByUUID, apiInfo.API.ApiId)
 	}
-	return nil
+	return err
 }
 
 // DeleteApiInstanceByResourceName implements Model.
 func (m *modelData) DeleteApiInstanceByResourceName(s string) error {
-	instance, exists := m.ApiInstancesByName[s]
+	instanceInfo, exists := m.ApiInstancesByName[s]
 	if !exists {
 		return ApiInstanceNotFoundError
 	}
+
+	err := m.baseModel.DeleteApiInstanceById(instanceInfo.APIInstance.InstanceId)
+
 	delete(m.ApiInstancesByName, s)
-	if instance.InstanceId != uuid.Nil {
-		delete(m.APIInstancesByUUID, instance.InstanceId)
+	if instanceInfo.APIInstance.InstanceId != uuid.Nil {
+		delete(m.APIInstancesByUUID, instanceInfo.APIInstance.InstanceId)
 	}
-	return nil
+	return err
 }
 
 // DeleteComponentByResourceName implements Model.
 func (m *modelData) DeleteComponentByResourceName(s string) error {
-	comp, exists := m.ComponentsByName[s]
+	compInfo, exists := m.ComponentsByName[s]
 	if !exists {
 		return ComponentNotFoundError
 	}
+
+	err := m.baseModel.DeleteComponentById(compInfo.Component.ComponentId)
+
 	delete(m.ComponentsByName, s)
-	if comp.ComponentId != uuid.Nil {
-		delete(m.ComponentsByUUID, comp.ComponentId)
+	if compInfo.Component.ComponentId != uuid.Nil {
+		delete(m.ComponentsByUUID, compInfo.Component.ComponentId)
 	}
-	return nil
+	return err
 }
 
 // DeleteComponentInstanceByResourceName implements Model.
 func (m *modelData) DeleteComponentInstanceByResourceName(s string) error {
-	instance, exists := m.ComponentInstancesByName[s]
+	instanceInfo, exists := m.ComponentInstancesByName[s]
 	if !exists {
 		return ComponentInstanceNotFoundError
 	}
+
+	err := m.baseModel.DeleteComponentInstanceById(instanceInfo.ComponentInstance.InstanceId)
+
 	delete(m.ComponentInstancesByName, s)
-	if instance.InstanceId != uuid.Nil {
-		delete(m.ComponentInstancesByUUID, instance.InstanceId)
+	if instanceInfo.ComponentInstance.InstanceId != uuid.Nil {
+		delete(m.ComponentInstancesByUUID, instanceInfo.ComponentInstance.InstanceId)
 	}
-	return nil
+	return err
 }
 
 // DeleteSystemInstanceByResourceName implements Model.
 func (m *modelData) DeleteSystemInstanceByResourceName(s string) error {
-	instance, exists := m.SystemInstancesByName[s]
+	instanceInfo, exists := m.SystemInstancesByName[s]
 	if !exists {
 		return SystemInstanceNotFoundError
 	}
+
+	err := m.baseModel.DeleteSystemInstanceById(instanceInfo.SystemInstance.InstanceId)
+
 	delete(m.SystemInstancesByName, s)
-	if instance.InstanceId != uuid.Nil {
-		delete(m.SystemInstancesByUUID, instance.InstanceId)
+	if instanceInfo.SystemInstance.InstanceId != uuid.Nil {
+		delete(m.SystemInstancesByUUID, instanceInfo.SystemInstance.InstanceId)
 	}
-	return nil
+	return err
 }
 
 // GetApiByResourceName implements Model.
-func (m *modelData) GetApiByResourceName(s string) *API {
+func (m *modelData) GetApiByResourceName(s string) *APIInfo {
 	api, exists := m.APIsByName[s]
 	if !exists {
 		return nil
@@ -418,7 +413,7 @@ func (m *modelData) GetApiByResourceName(s string) *API {
 }
 
 // GetApiById implements Model.
-func (m *modelData) GetApiById(id uuid.UUID) *API {
+func (m *modelData) GetApiById(id uuid.UUID) *APIInfo {
 	api, exists := m.APIsByUUID[id]
 	if !exists {
 		return nil
@@ -427,7 +422,7 @@ func (m *modelData) GetApiById(id uuid.UUID) *API {
 }
 
 // GetApiInstanceById implements Model.
-func (m *modelData) GetApiInstanceById(id uuid.UUID) *APIInstance {
+func (m *modelData) GetApiInstanceById(id uuid.UUID) *APIInstanceInfo {
 	instance, exists := m.APIInstancesByUUID[id]
 	if !exists {
 		return nil
@@ -436,7 +431,7 @@ func (m *modelData) GetApiInstanceById(id uuid.UUID) *APIInstance {
 }
 
 // GetApiInstanceByResourceName implements Model.
-func (m *modelData) GetApiInstanceByResourceName(s string) *APIInstance {
+func (m *modelData) GetApiInstanceByResourceName(s string) *APIInstanceInfo {
 	instance, exists := m.ApiInstancesByName[s]
 	if !exists {
 		return nil
@@ -445,7 +440,7 @@ func (m *modelData) GetApiInstanceByResourceName(s string) *APIInstance {
 }
 
 // GetComponentById implements Model.
-func (m *modelData) GetComponentById(id uuid.UUID) *Component {
+func (m *modelData) GetComponentById(id uuid.UUID) *ComponentInfo {
 	comp, exists := m.ComponentsByUUID[id]
 	if !exists {
 		return nil
@@ -454,7 +449,7 @@ func (m *modelData) GetComponentById(id uuid.UUID) *Component {
 }
 
 // GetComponentByResourceName implements Model.
-func (m *modelData) GetComponentByResourceName(s string) *Component {
+func (m *modelData) GetComponentByResourceName(s string) *ComponentInfo {
 	comp, exists := m.ComponentsByName[s]
 	if !exists {
 		return nil
@@ -463,7 +458,7 @@ func (m *modelData) GetComponentByResourceName(s string) *Component {
 }
 
 // GetComponentInstanceById implements Model.
-func (m *modelData) GetComponentInstanceById(id uuid.UUID) *ComponentInstance {
+func (m *modelData) GetComponentInstanceById(id uuid.UUID) *ComponentInstanceInfo {
 	instance, exists := m.ComponentInstancesByUUID[id]
 	if !exists {
 		return nil
@@ -472,7 +467,7 @@ func (m *modelData) GetComponentInstanceById(id uuid.UUID) *ComponentInstance {
 }
 
 // GetComponentInstanceByResourceName implements Model.
-func (m *modelData) GetComponentInstanceByResourceName(s string) *ComponentInstance {
+func (m *modelData) GetComponentInstanceByResourceName(s string) *ComponentInstanceInfo {
 	instance, exists := m.ComponentInstancesByName[s]
 	if !exists {
 		return nil
@@ -481,7 +476,7 @@ func (m *modelData) GetComponentInstanceByResourceName(s string) *ComponentInsta
 }
 
 // GetSystemInstanceById implements Model.
-func (m *modelData) GetSystemInstanceById(id uuid.UUID) *SystemInstance {
+func (m *modelData) GetSystemInstanceById(id uuid.UUID) *SystemInstanceInfo {
 	instance, exists := m.SystemInstancesByUUID[id]
 	if !exists {
 		return nil
@@ -490,10 +485,173 @@ func (m *modelData) GetSystemInstanceById(id uuid.UUID) *SystemInstance {
 }
 
 // GetSystemInstanceByResourceName implements Model.
-func (m *modelData) GetSystemInstanceByResourceName(s string) *SystemInstance {
+func (m *modelData) GetSystemInstanceByResourceName(s string) *SystemInstanceInfo {
 	instance, exists := m.SystemInstancesByName[s]
 	if !exists {
 		return nil
 	}
 	return instance
+}
+
+// AddContext implements Model.
+func (m *modelData) AddContext(sys *modelsrv.Context, name string, writer client.SubResourceWriter) error {
+	err := m.baseModel.AddContext(sys)
+	if err != nil {
+		return err
+	}
+
+	info := &ContextInfo{
+		Context:      sys,
+		resourceName: name,
+		statusWriter: writer,
+	}
+
+	m.ContextsByName[name] = info
+	if sys.ContextId != uuid.Nil {
+		m.ContextsByUUID[sys.ContextId] = info
+	}
+
+	return nil
+}
+
+// DeleteApiById implements Model.
+func (m *modelData) DeleteApiById(id uuid.UUID) error {
+	info, exists := m.APIsByUUID[id]
+	if !exists {
+		return ApiNotFoundError
+	}
+
+	err := m.baseModel.DeleteApiById(id)
+
+	// remove api from by-id map even if error occurs, to clean up
+	delete(m.APIsByUUID, id)
+
+	// remove api from by-name map even if error occurs, to clean up
+	delete(m.APIsByName, info.resourceName)
+
+	return err
+}
+
+// DeleteApiInstanceById implements Model.
+func (m *modelData) DeleteApiInstanceById(id uuid.UUID) error {
+	instanceInfo, exists := m.APIInstancesByUUID[id]
+	if !exists {
+		return ApiInstanceNotFoundError
+	}
+
+	err := m.baseModel.DeleteApiInstanceById(id)
+
+	// remove api instance from by-id map even if error occurs, to clean up
+	delete(m.APIInstancesByUUID, id)
+
+	// remove api instance from by-name map even if error occurs, to clean up
+	delete(m.ApiInstancesByName, instanceInfo.resourceName)
+
+	return err
+}
+
+// DeleteComponentById implements Model.
+func (m *modelData) DeleteComponentById(id uuid.UUID) error {
+	compInfo, exists := m.ComponentsByUUID[id]
+	if !exists {
+		return ComponentNotFoundError
+	}
+
+	err := m.baseModel.DeleteComponentById(id)
+
+	// remove component from by-id map even if error occurs, to clean up
+	delete(m.ComponentsByUUID, id)
+
+	// remove component from by-name map even if error occurs, to clean up
+	delete(m.ComponentsByName, compInfo.resourceName)
+
+	return err
+}
+
+// DeleteContextById implements Model.
+func (m *modelData) DeleteContextById(id uuid.UUID) error {
+	contextInfo, exists := m.ContextsByUUID[id]
+	if !exists {
+		return ContextNotFoundError
+	}
+
+	err := m.baseModel.DeleteContextById(id)
+
+	// remove context from by-id map even if error occurs, to clean up
+	delete(m.ContextsByUUID, id)
+
+	// remove context from by-name map even if error occurs, to clean up
+	delete(m.ContextsByName, contextInfo.resourceName)
+
+	return err
+}
+
+// DeleteContextByResourceName implements Model.
+func (m *modelData) DeleteContextByResourceName(s string) error {
+	contextInfo, exists := m.ContextsByName[s]
+	if !exists {
+		return ContextNotFoundError
+	}
+
+	// remove context from by-name map even if error occurs, to clean up
+	delete(m.ContextsByName, s)
+
+	id := contextInfo.Context.ContextId
+	if id != uuid.Nil {
+		err := m.baseModel.DeleteContextById(id)
+
+		// remove context-info from by-id map even if error occurs, to clean up
+		delete(m.ContextsByUUID, id)
+		if err != nil {
+
+			return err
+		}
+	}
+
+	return nil
+}
+
+// DeleteSystemById implements Model.
+func (m *modelData) DeleteSystemById(id uuid.UUID) error {
+	systemInfo, exists := m.SystemsByUUID[id]
+	if !exists {
+		return SystemNotFoundError
+	}
+
+	err := m.baseModel.DeleteSystemById(id)
+
+	// remove system from by-id map even if error occurs, to clean up
+	delete(m.SystemsByUUID, id)
+
+	// remove system from by-name map even if error occurs, to clean up
+	delete(m.SystemsByName, systemInfo.resourceName)
+
+	return err
+}
+
+// DeleteSystemInstanceById implements Model.
+func (m *modelData) DeleteSystemInstanceById(id uuid.UUID) error {
+	instanceInfo, exists := m.SystemInstancesByUUID[id]
+	if !exists {
+		return SystemInstanceNotFoundError
+	}
+
+	err := m.baseModel.DeleteSystemInstanceById(id)
+
+	// remove system instance from by-id map even if error occurs, to clean up
+	delete(m.SystemInstancesByUUID, id)
+
+	// remove system instance from by-name map even if error occurs, to clean up
+	delete(m.SystemInstancesByName, instanceInfo.resourceName)
+
+	return err
+}
+
+// GetContextById implements Model.
+func (m *modelData) GetContextById(id uuid.UUID) *ContextInfo {
+	context, exists := m.ContextsByUUID[id]
+	if !exists {
+		return nil
+	}
+	return context
 }

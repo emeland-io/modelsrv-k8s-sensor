@@ -29,6 +29,7 @@ import (
 
 	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
 	"gitlab.com/emeland/k8s-model/internal/model"
+	modelsrv "gitlab.com/emeland/modelsrv/pkg/model"
 )
 
 // SystemInstanceReconciler reconciles a SystemInstance object
@@ -64,7 +65,7 @@ func (r *SystemInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 	} else if errors.IsNotFound(err) {
 		err = r.Model.DeleteApiByResourceName(req.NamespacedName.String())
-		if err == model.ApiNotFoundError {
+		if err == modelsrv.ApiNotFoundError {
 			err = nil // ignore a resource that is not even in the model
 		}
 	} else {
@@ -81,8 +82,8 @@ func (r *SystemInstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func convertSystemInstance(sysInst *v1alpha1.SystemInstance) *model.SystemInstance {
-	newSysInst := &model.SystemInstance{
+func convertSystemInstance(sysInst *v1alpha1.SystemInstance) *modelsrv.SystemInstance {
+	newSysInst := &modelsrv.SystemInstance{
 		DisplayName: sysInst.Spec.DisplayName,
 	}
 

@@ -29,6 +29,7 @@ import (
 
 	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
 	"gitlab.com/emeland/k8s-model/internal/model"
+	modelsrv "gitlab.com/emeland/modelsrv/pkg/model"
 )
 
 // ComponentReconciler reconciles a Component object
@@ -64,7 +65,7 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	} else if errors.IsNotFound(err) {
 		err = r.Model.DeleteApiByResourceName(req.NamespacedName.String())
-		if err == model.ApiNotFoundError {
+		if err == modelsrv.ApiNotFoundError {
 			err = nil // ignore a resource that is not even in the model
 		}
 	} else {
@@ -81,8 +82,8 @@ func (r *ComponentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func convertComponent(comp *v1alpha1.Component) *model.Component {
-	newComp := &model.Component{
+func convertComponent(comp *v1alpha1.Component) *modelsrv.Component {
+	newComp := &modelsrv.Component{
 		DisplayName: comp.Spec.DisplayName,
 		Description: comp.Spec.Description,
 		Version:     parseVersion(comp.Spec.Version),

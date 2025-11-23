@@ -108,10 +108,15 @@ var _ = Describe("System Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			system := model.GetSystemByResourceName("no-such-resource")
-			Expect(system).To(BeNil())
-			system = model.GetSystemByResourceName(typeNamespacedName.String())
+			systemInfo := model.GetSystemByResourceName("no-such-resource")
+			Expect(systemInfo).To(BeNil())
+
+			systemInfo = model.GetSystemByResourceName(typeNamespacedName.String())
+			Expect(systemInfo).NotTo(BeNil())
+
+			system := systemInfo.System
 			Expect(system).NotTo(BeNil())
+
 			Expect(system.DisplayName).To(Equal(displayName))
 			Expect(system.Description).To(Equal(description))
 			Expect(system.SystemId).To(Equal(systemId))

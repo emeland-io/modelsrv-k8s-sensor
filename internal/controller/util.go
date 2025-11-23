@@ -5,11 +5,11 @@ import (
 
 	"github.com/google/uuid"
 	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
-	"gitlab.com/emeland/k8s-model/internal/model"
+	modelsrv "gitlab.com/emeland/modelsrv/pkg/model"
 )
 
-func parseVersion(v v1alpha1.Version) model.Version {
-	ver := model.Version{
+func parseVersion(v v1alpha1.Version) modelsrv.Version {
+	ver := modelsrv.Version{
 		Version: v.Version,
 	}
 
@@ -32,19 +32,19 @@ func parseDate(dateStr string) *time.Time {
 }
 
 // parseSystemRef parses a SystemRef from either a systemId or a VersionRef
-func parseSystemRef(sysId string, sysRef *v1alpha1.VersionRef) *model.SystemRef {
+func parseSystemRef(sysId string, sysRef *v1alpha1.VersionRef) *modelsrv.SystemRef {
 	if sysId != "" {
 		uid, err := uuid.Parse(sysId)
 		if err == nil {
-			return &model.SystemRef{
+			return &modelsrv.SystemRef{
 				SystemId: uid,
 			}
 		}
 	}
 	if sysRef != nil {
 		if sysRef.Name != "" && sysRef.Version != "" {
-			return &model.SystemRef{
-				SystemRef: &model.EntityVersion{
+			return &modelsrv.SystemRef{
+				SystemRef: &modelsrv.EntityVersion{
 					Name:    sysRef.Name,
 					Version: sysRef.Version,
 				},

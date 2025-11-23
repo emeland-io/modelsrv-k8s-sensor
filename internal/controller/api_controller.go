@@ -29,6 +29,7 @@ import (
 
 	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
 	"gitlab.com/emeland/k8s-model/internal/model"
+	modelsrv "gitlab.com/emeland/modelsrv/pkg/model"
 )
 
 // APIReconciler reconciles a API object
@@ -64,7 +65,7 @@ func (r *APIReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		}
 	} else if errors.IsNotFound(err) {
 		err = r.Model.DeleteApiByResourceName(req.NamespacedName.String())
-		if err == model.ApiNotFoundError {
+		if err == modelsrv.ApiNotFoundError {
 			err = nil // ignore a resource that is not even in the model
 		}
 	} else {
@@ -81,12 +82,12 @@ func (r *APIReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func convertAPI(api *v1alpha1.API) *model.API {
-	newApi := &model.API{
+func convertAPI(api *v1alpha1.API) *modelsrv.API {
+	newApi := &modelsrv.API{
 		DisplayName: api.Spec.DisplayName,
 		Description: api.Spec.Description,
 		Version:     parseVersion(api.Spec.Version),
-		Type:        model.ParseApiType(api.Spec.Type),
+		Type:        modelsrv.ParseApiType(api.Spec.Type),
 		System:      parseSystemRef(api.Spec.SystemId, &api.Spec.SystemRef),
 	}
 
