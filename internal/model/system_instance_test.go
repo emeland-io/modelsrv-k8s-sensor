@@ -114,3 +114,38 @@ func TestCreateDeleteSystemInstance(t *testing.T) {
 	assert.Error(t, err)
 	assert.Equal(t, SystemInstanceNotFoundError, err)
 }
+
+func TestDeleteSystemInstanceById(t *testing.T) {
+	model, err := NewModel()
+	assert.NoError(t, err)
+
+	// Test deleting non-existent system
+	err = model.DeleteSystemInstanceById(uuid.New())
+	assert.Equal(t, SystemInstanceNotFoundError, err)
+
+	// Add an invalid system and see it fail to be added
+	sys := &modelsrv.SystemInstance{DisplayName: "test-system"}
+
+	err = model.AddSystemInstance(sys, "test-system", nil)
+	assert.Error(t, err)
+	assert.Equal(t, modelsrv.UUIDNotSetError, err)
+
+	systemId := uuid.New()
+	sys.InstanceId = systemId
+	err = model.AddSystemInstance(sys, "test-system", nil)
+	assert.NoError(t, err)
+	assert.NotNil(t, model.GetSystemInstanceByResourceName("test-system"))
+	assert.NotNil(t, model.GetSystemInstanceById(systemId))
+
+	// Delete the system
+	err = model.DeleteSystemInstanceById(systemId)
+	assert.NoError(t, err)
+
+	// Verify system was deleted
+	assert.Nil(t, model.GetSystemInstanceByResourceName("test-system"))
+	assert.Nil(t, model.GetSystemInstanceById(systemId))
+
+	// Try deleting again should return error
+	err = model.DeleteSystemInstanceByResourceName("test-system")
+	assert.Equal(t, SystemInstanceNotFoundError, err)
+}

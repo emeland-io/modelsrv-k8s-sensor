@@ -68,3 +68,19 @@ func (m *modelData) DeleteSystemInstanceById(id uuid.UUID) error {
 
 	return err
 }
+
+// DeleteSystemInstanceByResourceName implements Model.
+func (m *modelData) DeleteSystemInstanceByResourceName(s string) error {
+	instanceInfo, exists := m.SystemInstancesByName[s]
+	if !exists {
+		return SystemInstanceNotFoundError
+	}
+
+	err := m.baseModel.DeleteSystemInstanceById(instanceInfo.SystemInstance.InstanceId)
+
+	delete(m.SystemInstancesByName, s)
+	if instanceInfo.SystemInstance.InstanceId != uuid.Nil {
+		delete(m.SystemInstancesByUUID, instanceInfo.SystemInstance.InstanceId)
+	}
+	return err
+}
