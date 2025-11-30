@@ -103,6 +103,32 @@ func InstallCertManager() error {
 	return err
 }
 
+// UninstallTraefikIngressController uninstalls the Ingress-Nginx ingress controller
+func UninstallTraefikIngressController() {
+	cmd := exec.Command("helm", "uninstall", "traefik", "--wait")
+
+	if _, err := Run(cmd); err != nil {
+		warnError(err)
+	}
+}
+
+// InstallTraefikIngressController installs the Ingress-Nginx ingress controller
+func InstallTraefikIngressController() error {
+	cmd := exec.Command("helm", "upgrade", "--install", "traefik", "traefik",
+		"--repo", "https://traefik.github.io/charts",
+		"--namespace", "traefik", "--create-namespace")
+	if _, err := Run(cmd); err != nil {
+		return err
+	}
+
+	cmd = exec.Command("kubectl", "wait", "--namespace", "traefik",
+		"--for=condition=ready", "pod", "--selector=app.kubernetes.io/name=traefik",
+		"--timeout=120s")
+	_, err := Run(cmd)
+
+	return err
+}
+
 // LoadImageToKindClusterWithName loads a local docker image to the kind cluster
 func LoadImageToKindClusterWithName(name string) error {
 	cluster := "kind"

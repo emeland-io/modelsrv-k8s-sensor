@@ -29,13 +29,16 @@ import (
 
 const namespace = "emeland-k8s-system"
 
-var _ = Describe("controller", Ordered, func() {
+var _ = Describe("EmELand Model-Server for Kubernetes", Ordered, func() {
 	BeforeAll(func() {
 		By("installing prometheus operator")
 		Expect(utils.InstallPrometheusOperator()).To(Succeed())
 
 		By("installing the cert-manager")
 		Expect(utils.InstallCertManager()).To(Succeed())
+
+		By("installing the Traefik ingress controller")
+		Expect(utils.InstallTraefikIngressController()).To(Succeed())
 
 		By("creating manager namespace")
 		cmd := exec.Command("kubectl", "create", "ns", namespace)
@@ -48,6 +51,9 @@ var _ = Describe("controller", Ordered, func() {
 
 		By("uninstalling the cert-manager bundle")
 		utils.UninstallCertManager()
+
+		By("uninstalling the Traefik ingress controller")
+		utils.UninstallTraefikIngressController()
 
 		By("removing manager namespace")
 		cmd := exec.Command("kubectl", "delete", "ns", namespace)
