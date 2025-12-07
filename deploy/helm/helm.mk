@@ -15,6 +15,7 @@ HELM_CRD_TEMPLATES_DIR      ?= ./deploy/helm/emeland-k8s/templates
 HELM_VALUES_FILE            ?= examples/00-dev-values.yaml
 CONFIG_DIR                  ?= ./config
 OAPI_DIR					?= ./api/oapi/emeland-k8s
+OAPI_FILE                   ?= EmergingEnterpriseLandscape-0.1.0-oapi3.0.3.yml
 KUBE_NAMESPACE              ?= emeland-k8s-system
 
 .PHONY: helm-clean helm-dep helm-lint helm-install-from-repo helm-uninstall helm-template helm-add-opencode helm-docs helm-publish
@@ -98,7 +99,7 @@ $(HELM_TEMPLATES_DIR)/rbac.yaml: $(CONFIG_DIR)/rbac/leader_election_role.yaml $(
 	@for file in $^ ; do sed '/app.kubernetes.io\/managed-by:/d' $$file | sed 's/namespace: system/namespace: \{\{ \.Release\.Namespace \}\}/' >> $@ ; printf "\n---\n\n"  >> $@ ; done
 
 # create configmap from the OAPI 3.0 file, so that helm can fix the url of the server at deploy time of the helm chart
-$(HELM_TEMPLATES_DIR)/api-spec-configmap.yaml: $(OAPI_DIR)/ServerStruct-ModelServer-0.2.0-oapi3.0.3.yml $(HELM_TEMPLATES_DIR)/_helpers.tpl
+$(HELM_TEMPLATES_DIR)/api-spec-configmap.yaml: $(OAPI_DIR)/$(OAPI_FILE) $(HELM_TEMPLATES_DIR)/_helpers.tpl
 	@printf "# DO NOT EDIT MANUALLY!\n# This file is generated from the contents of the OAPI file in the API folder by the make 'helm-publish'. \n\n" > $@
 	@printf "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: oapi-spec\nimmutable: true\ndata:\n  swagger-config.yaml: |\n" >> $@
 	@sed 's+- url: https://api.server.test/v1+\{\{- include "emeland-k8s.swaggerHostURL" \. \}\}+' $^ | sed 's/^/    /' >> $@
