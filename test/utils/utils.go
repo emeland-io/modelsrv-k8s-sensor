@@ -112,11 +112,25 @@ func UninstallTraefikIngressController() {
 	}
 }
 
-// InstallTraefikIngressController installs the Ingress-Nginx ingress controller
+// InstallTraefikIngressController installs the Traefik ingress controller
 func InstallTraefikIngressController() error {
-	cmd := exec.Command("helm", "upgrade", "--install", "traefik", "traefik",
+	cmd := exec.Command("openssl", "req", "-x509", "-nodes", "-days", "365",
+		"-newkey", "rsa:2048", "-keyout", "tls.key", "-out", "tls.crt",
+		"-subj", "/CN=*.traefik.local")
+	if _, err := Run(cmd); err != nil {
+		return err
+	}
+
+	cmd = exec.Command("kubectl", "create", "secret", "tls", "local-selfsigned-tls",
+		"--cert=tls.crt", "--key=tls.key", "--namespace traefik")
+	if _, err := Run(cmd); err != nil {
+		return err
+	}
+
+	cmd = exec.Command("helm", "upgrade", "--install", "traefik", "traefik",
 		"--repo", "https://traefik.github.io/charts",
-		"--namespace", "traefik", "--create-namespace")
+		"--namespace", "traefik", "--create-namespace",
+		"--values", "./test/e2e/fixtures/traefik-values.yaml")
 	if _, err := Run(cmd); err != nil {
 		return err
 	}

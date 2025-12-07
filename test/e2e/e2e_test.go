@@ -27,7 +27,11 @@ import (
 	"gitlab.com/emeland/k8s-model/test/utils"
 )
 
-const namespace = "emeland-k8s-system"
+const emelandNamespace = "emeland-k8s-system"
+const appNamespace = "test-app"
+
+const apiBaseURL = "http://modelsrv.local/api"
+const swaggerBaseURL = "http://modelsrv.local/swagger"
 
 var _ = Describe("EmELand Model-Server for Kubernetes", Ordered, func() {
 	BeforeAll(func() {
@@ -37,12 +41,18 @@ var _ = Describe("EmELand Model-Server for Kubernetes", Ordered, func() {
 		By("installing the cert-manager")
 		Expect(utils.InstallCertManager()).To(Succeed())
 
-		By("installing the Traefik ingress controller")
-		Expect(utils.InstallTraefikIngressController()).To(Succeed())
+		// currently the cloud-provider-kind provides the gateway
+		// By("installing the Traefik ingress controller")
+		// Expect(utils.InstallTraefikIngressController()).To(Succeed())
 
 		By("creating manager namespace")
-		cmd := exec.Command("kubectl", "create", "ns", namespace)
+		cmd := exec.Command("kubectl", "create", "ns", emelandNamespace)
 		_, _ = utils.Run(cmd)
+
+		By("creating the app namespace")
+		cmd = exec.Command("kubectl", "create", "ns", appNamespace)
+		_, _ = utils.Run(cmd)
+
 	})
 
 	AfterAll(func() {
@@ -52,12 +62,18 @@ var _ = Describe("EmELand Model-Server for Kubernetes", Ordered, func() {
 		By("uninstalling the cert-manager bundle")
 		utils.UninstallCertManager()
 
-		By("uninstalling the Traefik ingress controller")
-		utils.UninstallTraefikIngressController()
+		// currently the cloud-provider-kind provides the gateway
+		// By("uninstalling the Traefik ingress controller")
+		// utils.UninstallTraefikIngressController()
+
+		By("removing the app namespace")
+		cmd := exec.Command("kubectl", "delete", "ns", appNamespace)
+		_, _ = utils.Run(cmd)
 
 		By("removing manager namespace")
-		cmd := exec.Command("kubectl", "delete", "ns", namespace)
+		cmd = exec.Command("kubectl", "delete", "ns", emelandNamespace)
 		_, _ = utils.Run(cmd)
+
 	})
 
 	Context("Operator", func() {
@@ -66,7 +82,9 @@ var _ = Describe("EmELand Model-Server for Kubernetes", Ordered, func() {
 			var err error
 
 			// projectimage stores the name of the image used in the example
-			var projectimage = "example.com/emeland-k8s:v0.0.1"
+			var imageRepo = "example.com/emeland-k8s"
+			var imageVersion = "v0.0.1"
+			var projectImage = fmt.Sprintf("%s:%s", imageRepo, imageVersion)
 
 			By("building the manager(Operator) image")
 			cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectimage))
@@ -74,11 +92,20 @@ var _ = Describe("EmELand Model-Server for Kubernetes", Ordered, func() {
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 			By("loading the the manager(Operator) image on Kind")
-			err = utils.LoadImageToKindClusterWithName(projectimage)
+			err = utils.LoadImageToKindClusterWithName(projectImage)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 			By("installing CRDs")
-			cmd = exec.Command("make", "install")
+			cmd = exec.Command("make", "HELM_CRD_RELEASE=e2e-test-crds", "helm-install-crds")
+			_, err = utils.Run(cmd)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+
+			By("deploying the controller-manager, using helm")
+			cmd = exec.Command("make", "HELM_RELEASE=e2e-test",
+				fmt.Sprintf("IMAGE_REPO=%s", imageRepo),
+				fmt.Sprintf("IMAGE_VERSION=%s", imageVersion),
+				fmt.Sprintf("KUBE_NAMESPACE=%s", emelandNamespace),
+				"helm-install")
 			_, err = utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
@@ -97,7 +124,7 @@ var _ = Describe("EmELand Model-Server for Kubernetes", Ordered, func() {
 						"{{ if not .metadata.deletionTimestamp }}"+
 						"{{ .metadata.name }}"+
 						"{{ \"\\n\" }}{{ end }}{{ end }}",
-					"-n", namespace,
+					"-n", emelandNamespace,
 				)
 
 				podOutput, err := utils.Run(cmd)
@@ -112,7 +139,7 @@ var _ = Describe("EmELand Model-Server for Kubernetes", Ordered, func() {
 				// Validate pod status
 				cmd = exec.Command("kubectl", "get",
 					"pods", controllerPodName, "-o", "jsonpath={.status.phase}",
-					"-n", namespace,
+					"-n", emelandNamespace,
 				)
 				status, err := utils.Run(cmd)
 				ExpectWithOffset(2, err).NotTo(HaveOccurred())
@@ -123,6 +150,12 @@ var _ = Describe("EmELand Model-Server for Kubernetes", Ordered, func() {
 			}
 			EventuallyWithOffset(1, verifyControllerUp, time.Minute, time.Second).Should(Succeed())
 
+		})
+		It("should load the test application successfully", func() {
+			By("successfully loading the small set of model resources")
+			cmd := exec.Command("kubectl", "apply", "-f", "./test/e2e/fixtures/minimal-app.yaml")
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 })
