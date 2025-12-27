@@ -28,3 +28,6 @@ go.work
 cover.html
 tls.crt
 tls.key
+
+# artifacts
+emeland-k8s-*.tgz

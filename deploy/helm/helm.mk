@@ -6,12 +6,12 @@ HELM_REGISTRY               ?=
 HELM_CHART_NAME             ?= emeland-k8s
 HELM_CRD_CHART_NAME         ?= emeland-k8s-crd
 HELM_VERSION                ?= 0.1.0
-HELM_PUBLISH_URL            ?= https://gitlab.opencode.de/api/v4/projects/4311/packages/helm/api/$(HELM_CHANNEL)/charts
+HELM_PUBLISH_URL            ?= https://gitlab.com/api/v4/projects/75585634/packages/helm/api/$(HELM_CHANNEL)/charts
 HELM_REGISTRY_ALIAS         ?= opencode
 HELM_RELEASE                ?= emeland-k8s
 HELM_CRD_RELEASE            ?= emeland-k8s-crd
 HELM_TEMPLATES_DIR          ?= ./deploy/helm/emeland-k8s/templates
-HELM_CRD_TEMPLATES_DIR      ?= ./deploy/helm/emeland-k8s/templates
+HELM_CRD_TEMPLATES_DIR      ?= ./deploy/helm/emeland-k8s-crd/templates
 HELM_VALUES_FILE            ?= examples/00-dev-values.yaml
 CONFIG_DIR                  ?= ./config
 OAPI_DIR					?= ./api/oapi/emeland-k8s
@@ -28,7 +28,7 @@ helm-clean: ## clean up templated helm charts
 helm-dep-%: ## update helm dependencies
 	@$(HELM) dep update $(HELM_PATH)/$*
 
-helm-lint: $(HELM_TEMPLATES_DIR)/rbac.yaml $(HELM_CRD_TEMPLATES_DIR)/crds.yaml $(HELM_CRD_TEMPLATES_DIR)/rbac.yaml $(HELM_TEMPLATES_DIR)/api-spec-configmap.yaml ## lint helm chart
+helm-lint: $(HELM_TEMPLATES_DIR)/rbac.yaml $(HELM_CRD_TEMPLATES_DIR)/crds.yaml $(HELM_CRD_TEMPLATES_DIR)/rbac.yaml # TODO skip for now: $(HELM_TEMPLATES_DIR)/api-spec-configmap.yaml ## lint helm chart
 	@$(HELM) lint $(HELM_PATH)/$(HELM_CHART_NAME)
 	@$(HELM) lint $(HELM_PATH)/$(HELM_CRD_CHART_NAME)
 
@@ -74,7 +74,7 @@ helm-docs: ## update the auto generated docs of all helm charts
 helm-publish: helm-lint
 	$(HELM) package $(HELM_PATH)/$(HELM_CHART_NAME) 
 	$(HELM) package $(HELM_PATH)/$(HELM_CRD_CHART_NAME)
-	source .gitlab/gitlab.opencode.de-deploy-token.sh && echo user: $$USERNAME && \
+	source .gitlab/gitlab.com-deploy-token.sh && echo "user: $$USERNAME" && \
 	  curl --request POST --form 'chart=@$(HELM_CHART_NAME)-$(HELM_VERSION).tgz' \
         --user $$USERNAME:$$PASSWORD $(HELM_PUBLISH_URL) && \
 	  curl --request POST --form 'chart=@$(HELM_CRD_CHART_NAME)-$(HELM_VERSION).tgz' \

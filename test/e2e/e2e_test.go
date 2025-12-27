@@ -25,6 +25,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"gitlab.com/emeland/k8s-model/test/utils"
+	mapi "gitlab.com/emeland/modelsrv/pkg/client"
 )
 
 const emelandNamespace = "emeland-k8s-system"
@@ -87,7 +88,7 @@ var _ = Describe("EmELand Model-Server for Kubernetes", Ordered, func() {
 			var projectImage = fmt.Sprintf("%s:%s", imageRepo, imageVersion)
 
 			By("building the manager(Operator) image")
-			cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectimage))
+			cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
 			_, err = utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
@@ -109,17 +110,12 @@ var _ = Describe("EmELand Model-Server for Kubernetes", Ordered, func() {
 			_, err = utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
-			By("deploying the controller-manager")
-			cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectimage))
-			_, err = utils.Run(cmd)
-			ExpectWithOffset(1, err).NotTo(HaveOccurred())
-
 			By("validating that the controller-manager pod is running as expected")
 			verifyControllerUp := func() error {
 				// Get pod name
 
 				cmd = exec.Command("kubectl", "get",
-					"pods", "-l", "control-plane=controller-manager",
+					"pods", "-l", "app.kubernetes.io/instance=e2e-test",
 					"-o", "go-template={{ range .items }}"+
 						"{{ if not .metadata.deletionTimestamp }}"+
 						"{{ .metadata.name }}"+
@@ -134,7 +130,7 @@ var _ = Describe("EmELand Model-Server for Kubernetes", Ordered, func() {
 					return fmt.Errorf("expect 1 controller pods running, but got %d", len(podNames))
 				}
 				controllerPodName = podNames[0]
-				ExpectWithOffset(2, controllerPodName).Should(ContainSubstring("controller-manager"))
+				ExpectWithOffset(2, controllerPodName).Should(ContainSubstring("emeland-k8s"))
 
 				// Validate pod status
 				cmd = exec.Command("kubectl", "get",
@@ -157,5 +153,15 @@ var _ = Describe("EmELand Model-Server for Kubernetes", Ordered, func() {
 			_, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 		})
+
+		Context("Systems and SystemInstance", e2e_SystemsAndInstancesTest)
 	})
 })
+
+func e2e_SystemsAndInstancesTest() {
+	It("should find the system resources", func() {
+		By("being able to read the resources from the web-service")
+
+		modelClient, err := mapi.NewModelSrvClient(apiBaseURL)
+	})
+}
