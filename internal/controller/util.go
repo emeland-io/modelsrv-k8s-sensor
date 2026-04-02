@@ -22,15 +22,12 @@ const (
 // --- CRD helpers ---
 
 func parseVersion(v v1alpha1.Version) model.Version {
-	ver := model.Version{
-		Version: v.Version,
+	return model.Version{
+		Version:        v.Version,
+		AvailableFrom:  parseDate(v.AvailableFrom),
+		DeprecatedFrom: parseDate(v.DeprecatedFrom),
+		TerminatedFrom: parseDate(v.TerminatedFrom),
 	}
-
-	ver.AvailableFrom = parseDate(v.AvailableFrom)
-	ver.DeprecatedFrom = parseDate(v.DeprecatedFrom)
-	ver.TerminatedFrom = parseDate(v.TerminatedFrom)
-
-	return ver
 }
 
 func parseDate(dateStr string) *time.Time {
@@ -44,7 +41,7 @@ func parseDate(dateStr string) *time.Time {
 	return &t
 }
 
-// parseSystemRef parses a SystemRef from either a systemId or a VersionRef
+// parseSystemRef parses a SystemRef from either a systemId or a VersionRef.
 func parseSystemRef(sysId string, sysRef *v1alpha1.VersionRef) *model.SystemRef {
 	if sysId != "" {
 		uid, err := uuid.Parse(sysId)
@@ -63,12 +60,7 @@ func parseSystemRef(sysId string, sysRef *v1alpha1.VersionRef) *model.SystemRef 
 	return nil
 }
 
-// --- Native K8s resource helpers ---
-
-// uuidFromMeta converts metadata.uid to a uuid.UUID.
-func uuidFromMeta(obj metav1.ObjectMeta) uuid.UUID {
-	return parseOptionalUUID(string(obj.UID))
-}
+// --- Shared helpers for native K8s resources ---
 
 // parseOptionalUUID parses a UUID string, returning uuid.Nil if empty or invalid.
 func parseOptionalUUID(s string) uuid.UUID {
@@ -82,6 +74,11 @@ func parseOptionalUUID(s string) uuid.UUID {
 	return uid
 }
 
+// uuidFromMeta converts metadata.uid to a uuid.UUID.
+func uuidFromMeta(obj metav1.ObjectMeta) uuid.UUID {
+	return parseOptionalUUID(string(obj.UID))
+}
+
 // copyAnnotations copies all annotations from a K8s object into a new map.
 func copyAnnotations(obj metav1.ObjectMeta) map[string]string {
 	ann := make(map[string]string, len(obj.Annotations))
@@ -92,16 +89,8 @@ func copyAnnotations(obj metav1.ObjectMeta) map[string]string {
 }
 
 // annotationUUID parses a UUID from an annotation value, returning uuid.Nil if absent or invalid.
-func annotationUUID(obj metav1.ObjectMeta, key string) uuid.UUID {
-	v, ok := obj.Annotations[key]
-	if !ok || v == "" {
-		return uuid.Nil
-	}
-	uid, err := uuid.Parse(v)
-	if err != nil {
-		return uuid.Nil
-	}
-	return uid
+func annotationUUID(annotations map[string]string, key string) uuid.UUID {
+	return parseOptionalUUID(annotations[key])
 }
 
 // IsOwnedByCronJob returns true if the object has an ownerReference of kind CronJob.
@@ -116,19 +105,19 @@ func IsOwnedByCronJob(obj client.Object) bool {
 
 // componentInstanceFromMeta builds a ComponentInstance from any K8s object's metadata.
 func componentInstanceFromMeta(obj client.Object) *model.ComponentInstance {
-	uid := uuidFromMeta(metav1.ObjectMeta{UID: obj.GetUID(), Annotations: obj.GetAnnotations()})
+	uid := parseOptionalUUID(string(obj.GetUID()))
 	if uid == uuid.Nil {
 		return nil
 	}
 
-	meta := metav1.ObjectMeta{Name: obj.GetName(), Annotations: obj.GetAnnotations()}
+	annotations := obj.GetAnnotations()
 	ci := &model.ComponentInstance{
 		DisplayName: obj.GetName(),
 		InstanceId:  uid,
-		Annotations: copyAnnotations(meta),
+		Annotations: copyAnnotations(metav1.ObjectMeta{Annotations: annotations}),
 	}
 
-	if siID := annotationUUID(meta, AnnotationSystemInstanceID); siID != uuid.Nil {
+	if siID := annotationUUID(annotations, AnnotationSystemInstanceID); siID != uuid.Nil {
 		ci.SystemInstance = &model.SystemInstanceRef{InstanceId: siID}
 	}
 
@@ -137,23 +126,23 @@ func componentInstanceFromMeta(obj client.Object) *model.ComponentInstance {
 
 // apiInstanceFromMeta builds an APIInstance from any K8s object's metadata.
 func apiInstanceFromMeta(obj client.Object) *model.APIInstance {
-	uid := uuidFromMeta(metav1.ObjectMeta{UID: obj.GetUID(), Annotations: obj.GetAnnotations()})
+	uid := parseOptionalUUID(string(obj.GetUID()))
 	if uid == uuid.Nil {
 		return nil
 	}
 
-	meta := metav1.ObjectMeta{Name: obj.GetName(), Annotations: obj.GetAnnotations()}
+	annotations := obj.GetAnnotations()
 	ai := &model.APIInstance{
 		DisplayName: obj.GetName(),
 		InstanceId:  uid,
-		Annotations: copyAnnotations(meta),
+		Annotations: copyAnnotations(metav1.ObjectMeta{Annotations: annotations}),
 	}
 
-	if apiID := annotationUUID(meta, AnnotationAPIID); apiID != uuid.Nil {
+	if apiID := annotationUUID(annotations, AnnotationAPIID); apiID != uuid.Nil {
 		ai.ApiRef = model.ApiRef{ApiID: apiID}
 	}
 
-	if siID := annotationUUID(meta, AnnotationSystemInstanceID); siID != uuid.Nil {
+	if siID := annotationUUID(annotations, AnnotationSystemInstanceID); siID != uuid.Nil {
 		ai.SystemInstance = &model.SystemInstanceRef{InstanceId: siID}
 	}
 

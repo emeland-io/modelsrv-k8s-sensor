@@ -51,27 +51,23 @@ func TestCopyAnnotations_Nil(t *testing.T) {
 
 func TestAnnotationUUID(t *testing.T) {
 	id := uuid.New()
-	meta := metav1.ObjectMeta{Annotations: map[string]string{"key": id.String()}}
-	assert.Equal(t, id, annotationUUID(meta, "key"))
+	assert.Equal(t, id, annotationUUID(map[string]string{"key": id.String()}, "key"))
 }
 
 func TestAnnotationUUID_Missing(t *testing.T) {
-	meta := metav1.ObjectMeta{Annotations: map[string]string{}}
-	assert.Equal(t, uuid.Nil, annotationUUID(meta, "key"))
+	assert.Equal(t, uuid.Nil, annotationUUID(map[string]string{}, "key"))
 }
 
 func TestAnnotationUUID_Empty(t *testing.T) {
-	meta := metav1.ObjectMeta{Annotations: map[string]string{"key": ""}}
-	assert.Equal(t, uuid.Nil, annotationUUID(meta, "key"))
+	assert.Equal(t, uuid.Nil, annotationUUID(map[string]string{"key": ""}, "key"))
 }
 
 func TestAnnotationUUID_Invalid(t *testing.T) {
-	meta := metav1.ObjectMeta{Annotations: map[string]string{"key": "garbage"}}
-	assert.Equal(t, uuid.Nil, annotationUUID(meta, "key"))
+	assert.Equal(t, uuid.Nil, annotationUUID(map[string]string{"key": "garbage"}, "key"))
 }
 
 func TestAnnotationUUID_NilAnnotations(t *testing.T) {
-	assert.Equal(t, uuid.Nil, annotationUUID(metav1.ObjectMeta{}, "key"))
+	assert.Equal(t, uuid.Nil, annotationUUID(nil, "key"))
 }
 
 // --- IsOwnedByCronJob ---
