@@ -18,11 +18,14 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -39,11 +42,23 @@ type NamespaceReconciler struct {
 	Scheme *runtime.Scheme
 	Model  model.Model
 
-	// ClusterContextID is set once the kube-system namespace is observed.
-	ClusterContextID uuid.UUID
+	mu               sync.RWMutex
+	clusterContextID uuid.UUID
 }
 
 //+kubebuilder:rbac:groups=core,resources=namespaces,verbs=get;list;watch
+
+func (r *NamespaceReconciler) getClusterContextID() uuid.UUID {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.clusterContextID
+}
+
+func (r *NamespaceReconciler) setClusterContextID(id uuid.UUID) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.clusterContextID = id
+}
 
 func (r *NamespaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logr.FromContext(ctx)
@@ -52,30 +67,37 @@ func (r *NamespaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	err := r.Get(ctx, req.NamespacedName, ns)
 
 	if err == nil {
-		emCtx := convertNamespaceToContext(ns, r.ClusterContextID)
+		clusterID := r.getClusterContextID()
+
+		// If the root context is not yet known and this is not kube-system, re-queue.
+		if ns.Name != "kube-system" && clusterID == uuid.Nil {
+			return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
+		}
+
+		emCtx := convertNamespaceToContext(ns, clusterID)
 		if emCtx == nil {
 			return ctrl.Result{}, nil
 		}
 
-		// Track the cluster context ID from kube-system.
 		if ns.Name == "kube-system" {
-			r.ClusterContextID = emCtx.ContextId
+			r.setClusterContextID(emCtx.ContextId)
 		}
 
-		err = r.Model.AddContext(emCtx, req.Name)
-		if err != nil {
+		if err := r.Model.AddContext(emCtx, req.Name); err != nil {
 			log.Error(err, "could not add context to model")
+			return ctrl.Result{}, err
 		}
-	} else if errors.IsNotFound(err) {
+	} else if k8serrors.IsNotFound(err) {
 		err = r.Model.DeleteContextByResourceName(req.Name)
-		if err == model.ContextNotFoundError {
+		if errors.Is(err, model.ErrContextNotFound) {
 			err = nil
 		}
 	} else {
 		log.Error(err, fmt.Sprintf("could not get Namespace %s", req.Name))
+		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{}, err
 }
 
 // SetupWithManager sets up the controller with the Manager.

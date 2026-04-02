@@ -50,7 +50,7 @@ func TestContextOperations(t *testing.T) {
 
 	// Delete non-existent
 	err = m.DeleteContextByResourceName("test-namespace")
-	assert.Equal(t, ContextNotFoundError, err)
+	assert.ErrorIs(t, err, ErrContextNotFound)
 }
 
 func TestContextWithoutUUID(t *testing.T) {

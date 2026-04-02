@@ -18,9 +18,10 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -51,17 +52,19 @@ func (r *APIReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		err = r.Model.AddApi(convertAPI(api), req.NamespacedName.String(), r.Client.Status())
 		if err != nil {
 			log.Error(err, "could not add api to model")
+			return ctrl.Result{}, err
 		}
-	} else if errors.IsNotFound(err) {
+	} else if k8serrors.IsNotFound(err) {
 		err = r.Model.DeleteApiByResourceName(req.NamespacedName.String())
-		if err == model.ApiNotFoundError {
+		if errors.Is(err, model.ErrApiNotFound) {
 			err = nil // ignore a resource that is not even in the model
 		}
 	} else {
 		log.Error(err, fmt.Sprintf("could not get API %s", req.NamespacedName))
+		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{}, err
 }
 
 // SetupWithManager sets up the controller with the Manager.

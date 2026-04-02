@@ -18,9 +18,10 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -75,17 +76,19 @@ func (r *WorkloadReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		}
 		if err := r.Model.AddComponentInstance(ci, req.NamespacedName.String(), nil); err != nil {
 			log.Error(err, "could not add component instance to model", "kind", r.kind)
+			return ctrl.Result{}, err
 		}
-	} else if errors.IsNotFound(err) {
+	} else if k8serrors.IsNotFound(err) {
 		err = r.Model.DeleteComponentInstanceByResourceName(req.NamespacedName.String())
-		if err == model.ComponentInstanceNotFoundError {
+		if errors.Is(err, model.ErrComponentInstanceNotFound) {
 			err = nil
 		}
 	} else {
 		log.Error(err, fmt.Sprintf("could not get %s %s", r.kind, req.NamespacedName))
+		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{}, err
 }
 
 func (r *WorkloadReconciler) SetupWithManager(mgr ctrl.Manager) error {

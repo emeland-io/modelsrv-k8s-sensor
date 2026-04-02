@@ -182,7 +182,7 @@ func TestDeleteSystemByResourceName(t *testing.T) {
 
 	// Test deleting non-existent system
 	err = model.DeleteSystemByResourceName("non-existent")
-	assert.Equal(t, SystemNotFoundError, err)
+	assert.ErrorIs(t, err, ErrSystemNotFound)
 
 	// Add a system and verify it exists
 	sys := &System{DisplayName: "test-system"}
@@ -199,7 +199,7 @@ func TestDeleteSystemByResourceName(t *testing.T) {
 
 	// Try deleting again should return error
 	err = model.DeleteSystemByResourceName("test-system")
-	assert.Equal(t, SystemNotFoundError, err)
+	assert.ErrorIs(t, err, ErrSystemNotFound)
 }
 
 func TestGetSystemBySystemId(t *testing.T) {
@@ -390,4 +390,160 @@ func TestApiRef(t *testing.T) {
 	assert.Equal(t, api, apiRef.API)
 	assert.Equal(t, apiId, apiRef.ApiID)
 	assert.Equal(t, ev, apiRef.ApiRef)
+}
+
+func TestAddOverwritesByName(t *testing.T) {
+	m, err := NewModel()
+	assert.NoError(t, err)
+
+	id1 := uuid.New()
+	id2 := uuid.New()
+
+	// System: add then overwrite with same name
+	assert.NoError(t, m.AddSystem(&System{DisplayName: "v1", SystemId: id1}, "sys", nil))
+	assert.NoError(t, m.AddSystem(&System{DisplayName: "v2", SystemId: id2}, "sys", nil))
+	assert.Equal(t, "v2", m.GetSystemByResourceName("sys").DisplayName)
+	assert.NotNil(t, m.GetSystemById(id2))
+	// Old UUID still points to stale entry (no cleanup on overwrite)
+	assert.NotNil(t, m.GetSystemById(id1))
+
+	// API
+	assert.NoError(t, m.AddApi(&API{DisplayName: "v1", ApiId: id1}, "api", nil))
+	assert.NoError(t, m.AddApi(&API{DisplayName: "v2", ApiId: id2}, "api", nil))
+	assert.Equal(t, "v2", m.GetApiByResourceName("api").DisplayName)
+
+	// Component
+	assert.NoError(t, m.AddComponent(&Component{DisplayName: "v1", ComponentId: id1}, "comp", nil))
+	assert.NoError(t, m.AddComponent(&Component{DisplayName: "v2", ComponentId: id2}, "comp", nil))
+	assert.Equal(t, "v2", m.GetComponentByResourceName("comp").DisplayName)
+}
+
+func TestDeleteNonExistentReturnsError(t *testing.T) {
+	m, err := NewModel()
+	assert.NoError(t, err)
+
+	assert.ErrorIs(t, m.DeleteSystemByResourceName("x"), ErrSystemNotFound)
+	assert.ErrorIs(t, m.DeleteApiByResourceName("x"), ErrApiNotFound)
+	assert.ErrorIs(t, m.DeleteComponentByResourceName("x"), ErrComponentNotFound)
+	assert.ErrorIs(t, m.DeleteSystemInstanceByResourceName("x"), ErrSystemInstanceNotFound)
+	assert.ErrorIs(t, m.DeleteApiInstanceByResourceName("x"), ErrApiInstanceNotFound)
+	assert.ErrorIs(t, m.DeleteComponentInstanceByResourceName("x"), ErrComponentInstanceNotFound)
+	assert.ErrorIs(t, m.DeleteContextByResourceName("x"), ErrContextNotFound)
+}
+
+func TestAddWithNilUUID(t *testing.T) {
+	m, err := NewModel()
+	assert.NoError(t, err)
+
+	// Entities with uuid.Nil should be stored by name but not by UUID.
+	assert.NoError(t, m.AddSystem(&System{DisplayName: "s", SystemId: uuid.Nil}, "s", nil))
+	assert.NotNil(t, m.GetSystemByResourceName("s"))
+	assert.Nil(t, m.GetSystemById(uuid.Nil))
+
+	assert.NoError(t, m.AddApi(&API{DisplayName: "a", ApiId: uuid.Nil}, "a", nil))
+	assert.NotNil(t, m.GetApiByResourceName("a"))
+	assert.Nil(t, m.GetApiById(uuid.Nil))
+
+	assert.NoError(t, m.AddComponent(&Component{DisplayName: "c", ComponentId: uuid.Nil}, "c", nil))
+	assert.NotNil(t, m.GetComponentByResourceName("c"))
+	assert.Nil(t, m.GetComponentById(uuid.Nil))
+
+	assert.NoError(t, m.AddSystemInstance(&SystemInstance{DisplayName: "si", InstanceId: uuid.Nil}, "si", nil))
+	assert.NotNil(t, m.GetSystemInstanceByResourceName("si"))
+	assert.Nil(t, m.GetSystemInstanceById(uuid.Nil))
+
+	assert.NoError(t, m.AddApiInstance(&APIInstance{DisplayName: "ai", InstanceId: uuid.Nil}, "ai", nil))
+	assert.NotNil(t, m.GetApiInstanceByResourceName("ai"))
+	assert.Nil(t, m.GetApiInstanceById(uuid.Nil))
+
+	assert.NoError(t, m.AddComponentInstance(&ComponentInstance{DisplayName: "ci", InstanceId: uuid.Nil}, "ci", nil))
+	assert.NotNil(t, m.GetComponentInstanceByResourceName("ci"))
+	assert.Nil(t, m.GetComponentInstanceById(uuid.Nil))
+}
+
+func TestDeleteCleansUpUUIDMap(t *testing.T) {
+	m, err := NewModel()
+	assert.NoError(t, err)
+
+	id := uuid.New()
+
+	assert.NoError(t, m.AddSystem(&System{SystemId: id}, "s", nil))
+	assert.NoError(t, m.DeleteSystemByResourceName("s"))
+	assert.Nil(t, m.GetSystemById(id))
+
+	assert.NoError(t, m.AddApi(&API{ApiId: id}, "a", nil))
+	assert.NoError(t, m.DeleteApiByResourceName("a"))
+	assert.Nil(t, m.GetApiById(id))
+
+	assert.NoError(t, m.AddComponent(&Component{ComponentId: id}, "c", nil))
+	assert.NoError(t, m.DeleteComponentByResourceName("c"))
+	assert.Nil(t, m.GetComponentById(id))
+
+	assert.NoError(t, m.AddSystemInstance(&SystemInstance{InstanceId: id}, "si", nil))
+	assert.NoError(t, m.DeleteSystemInstanceByResourceName("si"))
+	assert.Nil(t, m.GetSystemInstanceById(id))
+
+	assert.NoError(t, m.AddApiInstance(&APIInstance{InstanceId: id}, "ai", nil))
+	assert.NoError(t, m.DeleteApiInstanceByResourceName("ai"))
+	assert.Nil(t, m.GetApiInstanceById(id))
+
+	assert.NoError(t, m.AddComponentInstance(&ComponentInstance{InstanceId: id}, "ci", nil))
+	assert.NoError(t, m.DeleteComponentInstanceByResourceName("ci"))
+	assert.Nil(t, m.GetComponentInstanceById(id))
+}
+
+func TestDoubleDeleteReturnsError(t *testing.T) {
+	m, err := NewModel()
+	assert.NoError(t, err)
+
+	id := uuid.New()
+
+	assert.NoError(t, m.AddSystem(&System{SystemId: id}, "s", nil))
+	assert.NoError(t, m.DeleteSystemByResourceName("s"))
+	assert.ErrorIs(t, m.DeleteSystemByResourceName("s"), ErrSystemNotFound)
+
+	assert.NoError(t, m.AddApi(&API{ApiId: id}, "a", nil))
+	assert.NoError(t, m.DeleteApiByResourceName("a"))
+	assert.ErrorIs(t, m.DeleteApiByResourceName("a"), ErrApiNotFound)
+
+	assert.NoError(t, m.AddContext(&Context{ContextId: id}, "ctx"))
+	assert.NoError(t, m.DeleteContextByResourceName("ctx"))
+	assert.ErrorIs(t, m.DeleteContextByResourceName("ctx"), ErrContextNotFound)
+}
+
+func TestVersionIsEqual(t *testing.T) {
+	now := time.Now()
+	later := now.Add(time.Hour)
+
+	v1 := Version{Version: "1.0", AvailableFrom: &now}
+	v2 := Version{Version: "1.0", AvailableFrom: &now}
+	v3 := Version{Version: "1.0", AvailableFrom: &later}
+	v4 := Version{Version: "2.0", AvailableFrom: &now}
+	v5 := Version{Version: "1.0", AvailableFrom: nil}
+
+	assert.True(t, v1.IsEqual(v2))
+	assert.False(t, v1.IsEqual(v3)) // different date
+	assert.False(t, v1.IsEqual(v4)) // different version string
+	assert.False(t, v1.IsEqual(v5)) // nil vs non-nil
+	assert.False(t, v5.IsEqual(v1)) // non-nil vs nil
+}
+
+func TestParseApiType(t *testing.T) {
+	assert.Equal(t, OpenAPI, ParseApiType("OpenAPI"))
+	assert.Equal(t, GraphQL, ParseApiType("GraphQL"))
+	assert.Equal(t, Unknown, ParseApiType("bogus"))
+	assert.Equal(t, Unknown, ParseApiType(""))
+}
+
+func TestAddContextNilAnnotations(t *testing.T) {
+	m, err := NewModel()
+	assert.NoError(t, err)
+
+	// Context with nil annotations should not panic.
+	assert.NoError(t, m.AddContext(&Context{
+		DisplayName: "bare",
+		ContextId:   uuid.New(),
+		Annotations: nil,
+	}, "bare"))
+	assert.NotNil(t, m.GetContextByResourceName("bare"))
 }
