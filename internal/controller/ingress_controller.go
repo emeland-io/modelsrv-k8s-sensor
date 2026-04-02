@@ -21,7 +21,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -31,24 +31,24 @@ import (
 	"gitlab.com/emeland/k8s-model/internal/model"
 )
 
-// ServiceReconciler reconciles a Service object
-type ServiceReconciler struct {
+// IngressReconciler reconciles an Ingress object
+type IngressReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Model  model.Model
 }
 
-//+kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch
-//+kubebuilder:rbac:groups=core,resources=services/status,verbs=get
+//+kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch
+//+kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses/status,verbs=get
 
-func (r *ServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logr.FromContext(ctx)
 
-	svc := &corev1.Service{}
-	err := r.Get(ctx, req.NamespacedName, svc)
+	ing := &networkingv1.Ingress{}
+	err := r.Get(ctx, req.NamespacedName, ing)
 
 	if err == nil {
-		ai := convertServiceToAPIInstance(svc)
+		ai := convertIngressToAPIInstance(ing)
 		if ai == nil {
 			return ctrl.Result{}, nil
 		}
@@ -62,36 +62,36 @@ func (r *ServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			err = nil
 		}
 	} else {
-		log.Error(err, fmt.Sprintf("could not get Service %s", req.NamespacedName))
+		log.Error(err, fmt.Sprintf("could not get Ingress %s", req.NamespacedName))
 	}
 
 	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *ServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *IngressReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&corev1.Service{}).
+		For(&networkingv1.Ingress{}).
 		Complete(r)
 }
 
-func convertServiceToAPIInstance(svc *corev1.Service) *model.APIInstance {
-	uid := uuidFromMeta(svc.ObjectMeta)
+func convertIngressToAPIInstance(ing *networkingv1.Ingress) *model.APIInstance {
+	uid := uuidFromMeta(ing.ObjectMeta)
 	if uid == uuid.Nil {
 		return nil
 	}
 
 	ai := &model.APIInstance{
-		DisplayName: svc.Name,
+		DisplayName: ing.Name,
 		InstanceId:  uid,
-		Annotations: copyAnnotations(svc.ObjectMeta),
+		Annotations: copyAnnotations(ing.ObjectMeta),
 	}
 
-	if apiID := annotationUUID(svc.ObjectMeta, AnnotationAPIID); apiID != uuid.Nil {
+	if apiID := annotationUUID(ing.ObjectMeta, AnnotationAPIID); apiID != uuid.Nil {
 		ai.ApiRef = model.ApiRef{ApiID: apiID}
 	}
 
-	if siID := annotationUUID(svc.ObjectMeta, AnnotationSystemInstanceID); siID != uuid.Nil {
+	if siID := annotationUUID(ing.ObjectMeta, AnnotationSystemInstanceID); siID != uuid.Nil {
 		ai.SystemInstance = &model.SystemInstanceRef{InstanceId: siID}
 	}
 

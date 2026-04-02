@@ -63,8 +63,8 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			log.Error(err, "could not add component to model")
 		}
 	} else if errors.IsNotFound(err) {
-		err = r.Model.DeleteApiByResourceName(req.NamespacedName.String())
-		if err == model.ApiNotFoundError {
+		err = r.Model.DeleteComponentByResourceName(req.NamespacedName.String())
+		if err == model.ComponentNotFoundError {
 			err = nil // ignore a resource that is not even in the model
 		}
 	} else {

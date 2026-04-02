@@ -18,37 +18,57 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/google/uuid"
 	batchv1 "k8s.io/api/batch/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
+	logr "sigs.k8s.io/controller-runtime/pkg/log"
+
+	"gitlab.com/emeland/k8s-model/internal/model"
 )
 
 // JobReconciler reconciles a Job object
 type JobReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	Model  model.Model
 }
 
-//+kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=batch,resources=jobs/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=batch,resources=jobs/finalizers,verbs=update
+//+kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=batch,resources=jobs/status,verbs=get
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Job object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.16.3/pkg/reconcile
 func (r *JobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	log := logr.FromContext(ctx)
 
-	// TODO(user): your logic here
+	job := &batchv1.Job{}
+	err := r.Get(ctx, req.NamespacedName, job)
+
+	if err == nil {
+		// Skip Jobs owned by a CronJob — the CronJob controller handles those.
+		if isOwnedByCronJob(job.ObjectMeta) {
+			return ctrl.Result{}, nil
+		}
+
+		ci := convertJobToComponentInstance(job)
+		if ci == nil {
+			return ctrl.Result{}, nil
+		}
+		err = r.Model.AddComponentInstance(ci, req.NamespacedName.String(), nil)
+		if err != nil {
+			log.Error(err, "could not add component instance to model")
+		}
+	} else if errors.IsNotFound(err) {
+		err = r.Model.DeleteComponentInstanceByResourceName(req.NamespacedName.String())
+		if err == model.ComponentInstanceNotFoundError {
+			err = nil
+		}
+	} else {
+		log.Error(err, fmt.Sprintf("could not get Job %s", req.NamespacedName))
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -58,4 +78,23 @@ func (r *JobReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&batchv1.Job{}).
 		Complete(r)
+}
+
+func convertJobToComponentInstance(job *batchv1.Job) *model.ComponentInstance {
+	uid := uuidFromMeta(job.ObjectMeta)
+	if uid == uuid.Nil {
+		return nil
+	}
+
+	ci := &model.ComponentInstance{
+		DisplayName: job.Name,
+		InstanceId:  uid,
+		Annotations: copyAnnotations(job.ObjectMeta),
+	}
+
+	if siID := annotationUUID(job.ObjectMeta, AnnotationSystemInstanceID); siID != uuid.Nil {
+		ci.SystemInstance = &model.SystemInstanceRef{InstanceId: siID}
+	}
+
+	return ci
 }

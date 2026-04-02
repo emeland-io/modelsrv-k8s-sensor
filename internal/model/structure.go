@@ -14,8 +14,14 @@ var ComponentNotFoundError error = fmt.Errorf("Component not found")
 var SystemInstanceNotFoundError error = fmt.Errorf("System Instance not found")
 var ApiInstanceNotFoundError error = fmt.Errorf("API Instance not found")
 var ComponentInstanceNotFoundError error = fmt.Errorf("Component Instance not found")
+var ContextNotFoundError error = fmt.Errorf("Context not found")
 
 type Model interface {
+	AddContext(ctx *Context, name string) error
+	DeleteContextByResourceName(s string) error
+	GetContextByResourceName(s string) *Context
+	GetContextById(id uuid.UUID) *Context
+
 	AddSystem(sys *System, name string, writer client.SubResourceWriter) error
 	DeleteSystemByResourceName(s string) error
 	GetSystemByResourceName(s string) *System
@@ -48,6 +54,9 @@ type Model interface {
 }
 
 type modelData struct {
+	ContextsByName map[string]*Context
+	ContextsByUUID map[uuid.UUID]*Context
+
 	SystemsByName    map[string]*System
 	APIsByName       map[string]*API
 	ComponentsByName map[string]*Component
@@ -70,6 +79,9 @@ var _ Model = (*modelData)(nil)
 
 func NewModel() (*modelData, error) {
 	model := &modelData{
+		ContextsByName: make(map[string]*Context),
+		ContextsByUUID: make(map[uuid.UUID]*Context),
+
 		SystemsByName:    make(map[string]*System),
 		APIsByName:       make(map[string]*API),
 		ComponentsByName: make(map[string]*Component),
@@ -238,6 +250,15 @@ type ComponentInstance struct {
 	ComponentRef   EntityVersion
 	SystemInstance *SystemInstanceRef
 	Annotations    map[string]string
+}
+
+// Context represents an EmELand context, mapped from K8s namespaces and clusters.
+type Context struct {
+	DisplayName string
+	ContextId   uuid.UUID
+	Description string
+	ParentId    uuid.UUID
+	Annotations map[string]string
 }
 
 // AddSystem implements Model.
@@ -496,4 +517,44 @@ func (m *modelData) GetSystemInstanceByResourceName(s string) *SystemInstance {
 		return nil
 	}
 	return instance
+}
+
+// AddContext implements Model.
+func (m *modelData) AddContext(ctx *Context, name string) error {
+	m.ContextsByName[name] = ctx
+	if ctx.ContextId != uuid.Nil {
+		m.ContextsByUUID[ctx.ContextId] = ctx
+	}
+	return nil
+}
+
+// DeleteContextByResourceName implements Model.
+func (m *modelData) DeleteContextByResourceName(s string) error {
+	ctx, exists := m.ContextsByName[s]
+	if !exists {
+		return ContextNotFoundError
+	}
+	delete(m.ContextsByName, s)
+	if ctx.ContextId != uuid.Nil {
+		delete(m.ContextsByUUID, ctx.ContextId)
+	}
+	return nil
+}
+
+// GetContextByResourceName implements Model.
+func (m *modelData) GetContextByResourceName(s string) *Context {
+	ctx, exists := m.ContextsByName[s]
+	if !exists {
+		return nil
+	}
+	return ctx
+}
+
+// GetContextById implements Model.
+func (m *modelData) GetContextById(id uuid.UUID) *Context {
+	ctx, exists := m.ContextsByUUID[id]
+	if !exists {
+		return nil
+	}
+	return ctx
 }

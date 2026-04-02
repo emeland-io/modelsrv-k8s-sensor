@@ -63,8 +63,8 @@ func (r *SystemInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			log.Error(err, "could not add systemInstance to model")
 		}
 	} else if errors.IsNotFound(err) {
-		err = r.Model.DeleteApiByResourceName(req.NamespacedName.String())
-		if err == model.ApiNotFoundError {
+		err = r.Model.DeleteSystemInstanceByResourceName(req.NamespacedName.String())
+		if err == model.SystemInstanceNotFoundError {
 			err = nil // ignore a resource that is not even in the model
 		}
 	} else {
