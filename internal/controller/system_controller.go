@@ -81,6 +81,6 @@ func convertSystem(sys *v1alpha1.System) *model.System {
 		Description: sys.Spec.Description,
 		SystemId:    parseOptionalUUID(sys.Spec.SystemId),
 		Version:     parseVersion(sys.Spec.Version),
-		Annotations: copyAnnotations(sys.ObjectMeta),
+		Annotations: copyAnnotations(sys.Annotations),
 	}
 }

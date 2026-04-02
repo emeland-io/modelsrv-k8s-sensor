@@ -81,6 +81,6 @@ func convertComponent(comp *v1alpha1.Component) *model.Component {
 		ComponentId: parseOptionalUUID(comp.Spec.ComponentId),
 		Version:     parseVersion(comp.Spec.Version),
 		System:      parseSystemRef(comp.Spec.SystemId, &comp.Spec.SystemRef),
-		Annotations: copyAnnotations(comp.ObjectMeta),
+		Annotations: copyAnnotations(comp.Annotations),
 	}
 }

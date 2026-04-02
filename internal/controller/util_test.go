@@ -32,17 +32,17 @@ func TestUuidFromMeta_Invalid(t *testing.T) {
 // --- copyAnnotations ---
 
 func TestCopyAnnotations(t *testing.T) {
-	meta := metav1.ObjectMeta{Annotations: map[string]string{"a": "1", "b": "2"}}
-	copied := copyAnnotations(meta)
+	src := map[string]string{"a": "1", "b": "2"}
+	copied := copyAnnotations(src)
 	assert.Equal(t, map[string]string{"a": "1", "b": "2"}, copied)
 
 	// Verify it's a copy, not a reference
 	copied["c"] = "3"
-	assert.Empty(t, meta.Annotations["c"])
+	assert.Empty(t, src["c"])
 }
 
 func TestCopyAnnotations_Nil(t *testing.T) {
-	copied := copyAnnotations(metav1.ObjectMeta{})
+	copied := copyAnnotations(nil)
 	assert.NotNil(t, copied)
 	assert.Empty(t, copied)
 }

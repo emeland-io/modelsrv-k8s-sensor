@@ -9,8 +9,7 @@ import (
 )
 
 func TestNewModel(t *testing.T) {
-	model, err := NewModel()
-	assert.NoError(t, err, "NewModel should not return an error")
+	model := NewModel()
 	assert.NotNil(t, model, "NewModel should return a non-nil model")
 
 	// Verify all maps are initialized
@@ -177,34 +176,28 @@ func TestSystemInstance(t *testing.T) {
 }
 
 func TestDeleteSystemByResourceName(t *testing.T) {
-	model, err := NewModel()
-	assert.NoError(t, err)
+	model := NewModel()
 
 	// Test deleting non-existent system
-	err = model.DeleteSystemByResourceName("non-existent")
-	assert.ErrorIs(t, err, ErrSystemNotFound)
+	assert.ErrorIs(t, model.DeleteSystemByResourceName("non-existent"), ErrSystemNotFound)
 
 	// Add a system and verify it exists
 	sys := &System{DisplayName: "test-system"}
-	err = model.AddSystem(sys, "test-system", nil)
-	assert.NoError(t, err)
+	assert.NoError(t, model.AddSystem(sys, "test-system", nil))
 	assert.NotNil(t, model.GetSystemByResourceName("test-system"))
 
 	// Delete the system
-	err = model.DeleteSystemByResourceName("test-system")
-	assert.NoError(t, err)
+	assert.NoError(t, model.DeleteSystemByResourceName("test-system"))
 
 	// Verify system was deleted
 	assert.Nil(t, model.GetSystemByResourceName("test-system"))
 
 	// Try deleting again should return error
-	err = model.DeleteSystemByResourceName("test-system")
-	assert.ErrorIs(t, err, ErrSystemNotFound)
+	assert.ErrorIs(t, model.DeleteSystemByResourceName("test-system"), ErrSystemNotFound)
 }
 
 func TestGetSystemBySystemId(t *testing.T) {
-	model, err := NewModel()
-	assert.NoError(t, err)
+	model := NewModel()
 
 	sysId := uuid.New()
 	sys := &System{
@@ -216,8 +209,7 @@ func TestGetSystemBySystemId(t *testing.T) {
 	assert.Nil(t, model.GetSystemById(sysId))
 
 	// Add system and verify it can be retrieved by UUID
-	err = model.AddSystem(sys, "test-system", nil)
-	assert.NoError(t, err)
+	assert.NoError(t, model.AddSystem(sys, "test-system", nil))
 
 	retrieved := model.GetSystemById(sysId)
 	assert.NotNil(t, retrieved)
@@ -225,8 +217,7 @@ func TestGetSystemBySystemId(t *testing.T) {
 }
 
 func TestAPIOperations(t *testing.T) {
-	model, err := NewModel()
-	assert.NoError(t, err)
+	model := NewModel()
 
 	apiId := uuid.New()
 	api := &API{
@@ -240,23 +231,20 @@ func TestAPIOperations(t *testing.T) {
 	assert.Nil(t, model.GetApiById(apiId))
 
 	// Add API and verify it exists
-	err = model.AddApi(api, "test-api", nil)
-	assert.NoError(t, err)
+	assert.NoError(t, model.AddApi(api, "test-api", nil))
 
 	// Verify retrieval by name and ID
 	assert.Equal(t, api, model.GetApiByResourceName("test-api"))
 	assert.Equal(t, api, model.GetApiById(apiId))
 
 	// Delete API and verify it's gone
-	err = model.DeleteApiByResourceName("test-api")
-	assert.NoError(t, err)
+	assert.NoError(t, model.DeleteApiByResourceName("test-api"))
 	assert.Nil(t, model.GetApiByResourceName("test-api"))
 	assert.Nil(t, model.GetApiById(apiId))
 }
 
 func TestComponentOperations(t *testing.T) {
-	model, err := NewModel()
-	assert.NoError(t, err)
+	model := NewModel()
 
 	componentId := uuid.New()
 	component := &Component{
@@ -269,23 +257,20 @@ func TestComponentOperations(t *testing.T) {
 	assert.Nil(t, model.GetComponentById(componentId))
 
 	// Add component and verify it exists
-	err = model.AddComponent(component, "test-component", nil)
-	assert.NoError(t, err)
+	assert.NoError(t, model.AddComponent(component, "test-component", nil))
 
 	// Verify retrieval by name and ID
 	assert.Equal(t, component, model.GetComponentByResourceName("test-component"))
 	assert.Equal(t, component, model.GetComponentById(componentId))
 
 	// Delete component and verify it's gone
-	err = model.DeleteComponentByResourceName("test-component")
-	assert.NoError(t, err)
+	assert.NoError(t, model.DeleteComponentByResourceName("test-component"))
 	assert.Nil(t, model.GetComponentByResourceName("test-component"))
 	assert.Nil(t, model.GetComponentById(componentId))
 }
 
 func TestSystemInstanceOperations(t *testing.T) {
-	model, err := NewModel()
-	assert.NoError(t, err)
+	model := NewModel()
 
 	instanceId := uuid.New()
 	sysRef := SystemRef{System: &System{DisplayName: "test-system"}}
@@ -300,23 +285,20 @@ func TestSystemInstanceOperations(t *testing.T) {
 	assert.Nil(t, model.GetSystemInstanceById(instanceId))
 
 	// Add instance and verify it exists
-	err = model.AddSystemInstance(instance, "test-instance", nil)
-	assert.NoError(t, err)
+	assert.NoError(t, model.AddSystemInstance(instance, "test-instance", nil))
 
 	// Verify retrieval by name and ID
 	assert.Equal(t, instance, model.GetSystemInstanceByResourceName("test-instance"))
 	assert.Equal(t, instance, model.GetSystemInstanceById(instanceId))
 
 	// Delete instance and verify it's gone
-	err = model.DeleteSystemInstanceByResourceName("test-instance")
-	assert.NoError(t, err)
+	assert.NoError(t, model.DeleteSystemInstanceByResourceName("test-instance"))
 	assert.Nil(t, model.GetSystemInstanceByResourceName("test-instance"))
 	assert.Nil(t, model.GetSystemInstanceById(instanceId))
 }
 
 func TestAPIInstanceOperations(t *testing.T) {
-	model, err := NewModel()
-	assert.NoError(t, err)
+	model := NewModel()
 
 	instanceId := uuid.New()
 	apiRef := ApiRef{API: &API{DisplayName: "test-api"}}
@@ -331,23 +313,20 @@ func TestAPIInstanceOperations(t *testing.T) {
 	assert.Nil(t, model.GetApiInstanceById(instanceId))
 
 	// Add instance and verify it exists
-	err = model.AddApiInstance(instance, "test-instance", nil)
-	assert.NoError(t, err)
+	assert.NoError(t, model.AddApiInstance(instance, "test-instance", nil))
 
 	// Verify retrieval by name and ID
 	assert.Equal(t, instance, model.GetApiInstanceByResourceName("test-instance"))
 	assert.Equal(t, instance, model.GetApiInstanceById(instanceId))
 
 	// Delete instance and verify it's gone
-	err = model.DeleteApiInstanceByResourceName("test-instance")
-	assert.NoError(t, err)
+	assert.NoError(t, model.DeleteApiInstanceByResourceName("test-instance"))
 	assert.Nil(t, model.GetApiInstanceByResourceName("test-instance"))
 	assert.Nil(t, model.GetApiInstanceById(instanceId))
 }
 
 func TestComponentInstanceOperations(t *testing.T) {
-	model, err := NewModel()
-	assert.NoError(t, err)
+	model := NewModel()
 
 	instanceId := uuid.New()
 	componentRef := EntityVersion{Name: "test-component", Version: "1.0.0"}
@@ -362,16 +341,14 @@ func TestComponentInstanceOperations(t *testing.T) {
 	assert.Nil(t, model.GetComponentInstanceById(instanceId))
 
 	// Add instance and verify it exists
-	err = model.AddComponentInstance(instance, "test-instance", nil)
-	assert.NoError(t, err)
+	assert.NoError(t, model.AddComponentInstance(instance, "test-instance", nil))
 
 	// Verify retrieval by name and ID
 	assert.Equal(t, instance, model.GetComponentInstanceByResourceName("test-instance"))
 	assert.Equal(t, instance, model.GetComponentInstanceById(instanceId))
 
 	// Delete instance and verify it's gone
-	err = model.DeleteComponentInstanceByResourceName("test-instance")
-	assert.NoError(t, err)
+	assert.NoError(t, model.DeleteComponentInstanceByResourceName("test-instance"))
 	assert.Nil(t, model.GetComponentInstanceByResourceName("test-instance"))
 	assert.Nil(t, model.GetComponentInstanceById(instanceId))
 }
@@ -393,8 +370,7 @@ func TestApiRef(t *testing.T) {
 }
 
 func TestAddOverwritesByName(t *testing.T) {
-	m, err := NewModel()
-	assert.NoError(t, err)
+	m := NewModel()
 
 	id1 := uuid.New()
 	id2 := uuid.New()
@@ -419,8 +395,7 @@ func TestAddOverwritesByName(t *testing.T) {
 }
 
 func TestDeleteNonExistentReturnsError(t *testing.T) {
-	m, err := NewModel()
-	assert.NoError(t, err)
+	m := NewModel()
 
 	assert.ErrorIs(t, m.DeleteSystemByResourceName("x"), ErrSystemNotFound)
 	assert.ErrorIs(t, m.DeleteApiByResourceName("x"), ErrApiNotFound)
@@ -432,8 +407,7 @@ func TestDeleteNonExistentReturnsError(t *testing.T) {
 }
 
 func TestAddWithNilUUID(t *testing.T) {
-	m, err := NewModel()
-	assert.NoError(t, err)
+	m := NewModel()
 
 	// Entities with uuid.Nil should be stored by name but not by UUID.
 	assert.NoError(t, m.AddSystem(&System{DisplayName: "s", SystemId: uuid.Nil}, "s", nil))
@@ -462,8 +436,7 @@ func TestAddWithNilUUID(t *testing.T) {
 }
 
 func TestDeleteCleansUpUUIDMap(t *testing.T) {
-	m, err := NewModel()
-	assert.NoError(t, err)
+	m := NewModel()
 
 	id := uuid.New()
 
@@ -493,8 +466,7 @@ func TestDeleteCleansUpUUIDMap(t *testing.T) {
 }
 
 func TestDoubleDeleteReturnsError(t *testing.T) {
-	m, err := NewModel()
-	assert.NoError(t, err)
+	m := NewModel()
 
 	id := uuid.New()
 
@@ -536,8 +508,7 @@ func TestParseApiType(t *testing.T) {
 }
 
 func TestAddContextNilAnnotations(t *testing.T) {
-	m, err := NewModel()
-	assert.NoError(t, err)
+	m := NewModel()
 
 	// Context with nil annotations should not panic.
 	assert.NoError(t, m.AddContext(&Context{

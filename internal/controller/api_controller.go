@@ -82,6 +82,6 @@ func convertAPI(api *v1alpha1.API) *model.API {
 		Version:     parseVersion(api.Spec.Version),
 		Type:        model.ParseApiType(api.Spec.Type),
 		System:      parseSystemRef(api.Spec.SystemId, &api.Spec.SystemRef),
-		Annotations: copyAnnotations(api.ObjectMeta),
+		Annotations: copyAnnotations(api.Annotations),
 	}
 }

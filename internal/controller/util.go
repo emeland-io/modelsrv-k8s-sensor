@@ -79,10 +79,10 @@ func uuidFromMeta(obj metav1.ObjectMeta) uuid.UUID {
 	return parseOptionalUUID(string(obj.UID))
 }
 
-// copyAnnotations copies all annotations from a K8s object into a new map.
-func copyAnnotations(obj metav1.ObjectMeta) map[string]string {
-	ann := make(map[string]string, len(obj.Annotations))
-	for k, v := range obj.Annotations {
+// copyAnnotations copies all annotations into a new map.
+func copyAnnotations(src map[string]string) map[string]string {
+	ann := make(map[string]string, len(src))
+	for k, v := range src {
 		ann[k] = v
 	}
 	return ann
@@ -114,7 +114,7 @@ func componentInstanceFromMeta(obj client.Object) *model.ComponentInstance {
 	ci := &model.ComponentInstance{
 		DisplayName: obj.GetName(),
 		InstanceId:  uid,
-		Annotations: copyAnnotations(metav1.ObjectMeta{Annotations: annotations}),
+		Annotations: copyAnnotations(annotations),
 	}
 
 	if siID := annotationUUID(annotations, AnnotationSystemInstanceID); siID != uuid.Nil {
@@ -135,7 +135,7 @@ func apiInstanceFromMeta(obj client.Object) *model.APIInstance {
 	ai := &model.APIInstance{
 		DisplayName: obj.GetName(),
 		InstanceId:  uid,
-		Annotations: copyAnnotations(metav1.ObjectMeta{Annotations: annotations}),
+		Annotations: copyAnnotations(annotations),
 	}
 
 	if apiID := annotationUUID(annotations, AnnotationAPIID); apiID != uuid.Nil {

@@ -52,11 +52,10 @@ var _ = Describe("APIInstanceReconciler", func() {
 		}
 
 		fakeClient := newFakeClient(svc)
-		m, err := model.NewModel()
-		Expect(err).NotTo(HaveOccurred())
+		m := model.NewModel()
 
 		r := NewAPIInstanceReconciler(fakeClient, testScheme, m, &corev1.Service{}, "Service")
-		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
 		Expect(err).NotTo(HaveOccurred())
 
 		ai := m.GetApiInstanceByResourceName(nn.String())
@@ -78,11 +77,10 @@ var _ = Describe("APIInstanceReconciler", func() {
 		}
 
 		fakeClient := newFakeClient(ing)
-		m, err := model.NewModel()
-		Expect(err).NotTo(HaveOccurred())
+		m := model.NewModel()
 
 		r := NewAPIInstanceReconciler(fakeClient, testScheme, m, &networkingv1.Ingress{}, "Ingress")
-		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: ingNN})
+		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: ingNN})
 		Expect(err).NotTo(HaveOccurred())
 
 		ai := m.GetApiInstanceByResourceName(ingNN.String())
@@ -91,8 +89,7 @@ var _ = Describe("APIInstanceReconciler", func() {
 	})
 
 	It("should delete an APIInstance when the resource is gone", func() {
-		m, err := model.NewModel()
-		Expect(err).NotTo(HaveOccurred())
+		m := model.NewModel()
 
 		Expect(m.AddApiInstance(&model.APIInstance{
 			DisplayName: "my-svc",
@@ -101,7 +98,7 @@ var _ = Describe("APIInstanceReconciler", func() {
 
 		fakeClient := newFakeClient()
 		r := NewAPIInstanceReconciler(fakeClient, testScheme, m, &corev1.Service{}, "Service")
-		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(m.GetApiInstanceByResourceName(nn.String())).To(BeNil())

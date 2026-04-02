@@ -145,11 +145,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	emModel, err := model.NewModel()
-	if err != nil {
-		setupLog.Error(err, "unable to create model")
-		os.Exit(1)
-	}
+	emModel := model.NewModel()
 
 	c := mgr.GetClient()
 	s := mgr.GetScheme()

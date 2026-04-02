@@ -42,11 +42,10 @@ var _ = Describe("NamespaceReconciler", func() {
 		}
 
 		fakeClient := newFakeClient(ksNS)
-		m, err := model.NewModel()
-		Expect(err).NotTo(HaveOccurred())
+		m := model.NewModel()
 
 		r := &NamespaceReconciler{Client: fakeClient, Scheme: testScheme, Model: m}
-		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: "kube-system"}})
+		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: "kube-system"}})
 		Expect(err).NotTo(HaveOccurred())
 
 		emCtx := m.GetContextByResourceName("kube-system")
@@ -78,13 +77,12 @@ var _ = Describe("NamespaceReconciler", func() {
 		}
 
 		fakeClient := newFakeClient(ksNS, ns)
-		m, err := model.NewModel()
-		Expect(err).NotTo(HaveOccurred())
+		m := model.NewModel()
 
 		r := &NamespaceReconciler{Client: fakeClient, Scheme: testScheme, Model: m}
 
 		// Reconcile kube-system first to set the root context.
-		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: "kube-system"}})
+		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: "kube-system"}})
 		Expect(err).NotTo(HaveOccurred())
 
 		// Now reconcile the regular namespace.
@@ -109,8 +107,7 @@ var _ = Describe("NamespaceReconciler", func() {
 		}
 
 		fakeClient := newFakeClient(ns)
-		m, err := model.NewModel()
-		Expect(err).NotTo(HaveOccurred())
+		m := model.NewModel()
 
 		r := &NamespaceReconciler{Client: fakeClient, Scheme: testScheme, Model: m}
 		result, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: "my-app"}})
@@ -123,8 +120,7 @@ var _ = Describe("NamespaceReconciler", func() {
 
 	It("should delete a context when namespace is removed", func() {
 		ctx := context.Background()
-		m, err := model.NewModel()
-		Expect(err).NotTo(HaveOccurred())
+		m := model.NewModel()
 
 		Expect(m.AddContext(&model.Context{
 			DisplayName: "old-ns",
@@ -133,7 +129,7 @@ var _ = Describe("NamespaceReconciler", func() {
 
 		fakeClient := newFakeClient() // namespace gone
 		r := &NamespaceReconciler{Client: fakeClient, Scheme: testScheme, Model: m}
-		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: "old-ns"}})
+		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: "old-ns"}})
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(m.GetContextByResourceName("old-ns")).To(BeNil())

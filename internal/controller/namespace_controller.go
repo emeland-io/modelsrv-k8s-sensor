@@ -117,7 +117,7 @@ func convertNamespaceToContext(ns *corev1.Namespace, clusterContextID uuid.UUID)
 		DisplayName: ns.Name,
 		ContextId:   uid,
 		Description: fmt.Sprintf("Kubernetes namespace %s", ns.Name),
-		Annotations: copyAnnotations(ns.ObjectMeta),
+		Annotations: copyAnnotations(ns.Annotations),
 	}
 
 	// kube-system is the root cluster context; all others are children.

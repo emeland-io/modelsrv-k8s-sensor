@@ -8,8 +8,7 @@ import (
 )
 
 func TestContextOperations(t *testing.T) {
-	m, err := NewModel()
-	assert.NoError(t, err)
+	m := NewModel()
 
 	ctxId := uuid.New()
 	parentId := uuid.New()
@@ -26,8 +25,7 @@ func TestContextOperations(t *testing.T) {
 	assert.Nil(t, m.GetContextById(ctxId))
 
 	// Add and verify
-	err = m.AddContext(ctx, "test-namespace")
-	assert.NoError(t, err)
+	assert.NoError(t, m.AddContext(ctx, "test-namespace"))
 	assert.Equal(t, ctx, m.GetContextByResourceName("test-namespace"))
 	assert.Equal(t, ctx, m.GetContextById(ctxId))
 	assert.Equal(t, parentId, m.GetContextById(ctxId).ParentId)
@@ -38,40 +36,33 @@ func TestContextOperations(t *testing.T) {
 		DisplayName: "updated-namespace",
 		ContextId:   ctxId,
 	}
-	err = m.AddContext(updated, "test-namespace")
-	assert.NoError(t, err)
+	assert.NoError(t, m.AddContext(updated, "test-namespace"))
 	assert.Equal(t, "updated-namespace", m.GetContextByResourceName("test-namespace").DisplayName)
 
 	// Delete
-	err = m.DeleteContextByResourceName("test-namespace")
-	assert.NoError(t, err)
+	assert.NoError(t, m.DeleteContextByResourceName("test-namespace"))
 	assert.Nil(t, m.GetContextByResourceName("test-namespace"))
 	assert.Nil(t, m.GetContextById(ctxId))
 
 	// Delete non-existent
-	err = m.DeleteContextByResourceName("test-namespace")
-	assert.ErrorIs(t, err, ErrContextNotFound)
+	assert.ErrorIs(t, m.DeleteContextByResourceName("test-namespace"), ErrContextNotFound)
 }
 
 func TestContextWithoutUUID(t *testing.T) {
-	m, err := NewModel()
-	assert.NoError(t, err)
+	m := NewModel()
 
 	ctx := &Context{
 		DisplayName: "no-uuid",
 		ContextId:   uuid.Nil,
 	}
 
-	err = m.AddContext(ctx, "no-uuid")
-	assert.NoError(t, err)
+	assert.NoError(t, m.AddContext(ctx, "no-uuid"))
 	assert.Equal(t, ctx, m.GetContextByResourceName("no-uuid"))
-	// Should not be retrievable by UUID
 	assert.Nil(t, m.GetContextById(uuid.Nil))
 }
 
 func TestNewModelInitializesContextMaps(t *testing.T) {
-	m, err := NewModel()
-	assert.NoError(t, err)
+	m := NewModel()
 	assert.NotNil(t, m.ContextsByName)
 	assert.NotNil(t, m.ContextsByUUID)
 }

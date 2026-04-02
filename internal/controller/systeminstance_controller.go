@@ -79,6 +79,6 @@ func convertSystemInstance(sysInst *v1alpha1.SystemInstance) *model.SystemInstan
 		DisplayName: sysInst.Spec.DisplayName,
 		InstanceId:  parseOptionalUUID(sysInst.Spec.InstanceId),
 		SystemRef:   parseSystemRef(sysInst.Spec.SystemId, nil),
-		Annotations: copyAnnotations(sysInst.ObjectMeta),
+		Annotations: copyAnnotations(sysInst.Annotations),
 	}
 }

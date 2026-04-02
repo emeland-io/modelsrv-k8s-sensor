@@ -80,8 +80,8 @@ type modelData struct {
 // ensure Model interface is implemented correctly
 var _ Model = (*modelData)(nil)
 
-func NewModel() (*modelData, error) {
-	model := &modelData{
+func NewModel() *modelData {
+	return &modelData{
 		ContextsByName: make(map[string]*Context),
 		ContextsByUUID: make(map[uuid.UUID]*Context),
 
@@ -101,8 +101,6 @@ func NewModel() (*modelData, error) {
 		APIInstancesByUUID:       make(map[uuid.UUID]*APIInstance),
 		ComponentInstancesByUUID: make(map[uuid.UUID]*ComponentInstance),
 	}
-
-	return model, nil
 }
 
 type Version struct {
