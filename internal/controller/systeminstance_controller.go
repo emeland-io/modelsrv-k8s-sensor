@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/google/uuid"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -73,26 +72,10 @@ func (r *SystemInstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func convertSystemInstance(sysInst *v1alpha1.SystemInstance) *model.SystemInstance {
-	newSysInst := &model.SystemInstance{
+	return &model.SystemInstance{
 		DisplayName: sysInst.Spec.DisplayName,
+		InstanceId:  parseOptionalUUID(sysInst.Spec.InstanceId),
+		SystemRef:   parseSystemRef(sysInst.Spec.SystemId, nil),
+		Annotations: copyAnnotations(sysInst.ObjectMeta),
 	}
-
-	// parse ID if set
-	if sysInst.Spec.InstanceId != "" {
-		uid, err := uuid.Parse(sysInst.Spec.InstanceId)
-		if err == nil {
-			newSysInst.InstanceId = uid
-		}
-	}
-
-	// parse System reference
-	newSysInst.SystemRef = parseSystemRef(sysInst.Spec.SystemId, nil)
-
-	// transfer annotations
-	newSysInst.Annotations = make(map[string]string)
-	for key, value := range sysInst.Annotations {
-		newSysInst.Annotations[key] = value
-	}
-
-	return newSysInst
 }

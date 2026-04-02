@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/google/uuid"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -74,27 +73,11 @@ func (r *SystemReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func convertSystem(sys *v1alpha1.System) *model.System {
-	newSys := &model.System{
+	return &model.System{
 		DisplayName: sys.Spec.DisplayName,
 		Description: sys.Spec.Description,
+		SystemId:    parseOptionalUUID(sys.Spec.SystemId),
+		Version:     parseVersion(sys.Spec.Version),
+		Annotations: copyAnnotations(sys.ObjectMeta),
 	}
-
-	// parse Version
-	newSys.Version = parseVersion(sys.Spec.Version)
-
-	// parse ID if set
-	if sys.Spec.SystemId != "" {
-		uid, err := uuid.Parse(sys.Spec.SystemId)
-		if err == nil {
-			newSys.SystemId = uid
-		}
-	}
-
-	// transfer annotations
-	newSys.Annotations = make(map[string]string)
-	for key, value := range sys.Annotations {
-		newSys.Annotations[key] = value
-	}
-
-	return newSys
 }

@@ -67,7 +67,15 @@ func parseSystemRef(sysId string, sysRef *v1alpha1.VersionRef) *model.SystemRef 
 
 // uuidFromMeta converts metadata.uid to a uuid.UUID.
 func uuidFromMeta(obj metav1.ObjectMeta) uuid.UUID {
-	uid, err := uuid.Parse(string(obj.UID))
+	return parseOptionalUUID(string(obj.UID))
+}
+
+// parseOptionalUUID parses a UUID string, returning uuid.Nil if empty or invalid.
+func parseOptionalUUID(s string) uuid.UUID {
+	if s == "" {
+		return uuid.Nil
+	}
+	uid, err := uuid.Parse(s)
 	if err != nil {
 		return uuid.Nil
 	}

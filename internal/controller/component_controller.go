@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/google/uuid"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -73,26 +72,12 @@ func (r *ComponentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func convertComponent(comp *v1alpha1.Component) *model.Component {
-	newComp := &model.Component{
+	return &model.Component{
 		DisplayName: comp.Spec.DisplayName,
 		Description: comp.Spec.Description,
+		ComponentId: parseOptionalUUID(comp.Spec.ComponentId),
 		Version:     parseVersion(comp.Spec.Version),
 		System:      parseSystemRef(comp.Spec.SystemId, &comp.Spec.SystemRef),
+		Annotations: copyAnnotations(comp.ObjectMeta),
 	}
-
-	// parse ID if set
-	if comp.Spec.ComponentId != "" {
-		uid, err := uuid.Parse(comp.Spec.ComponentId)
-		if err == nil {
-			newComp.ComponentId = uid
-		}
-	}
-
-	// transfer annotations
-	newComp.Annotations = make(map[string]string)
-	for key, value := range comp.Annotations {
-		newComp.Annotations[key] = value
-	}
-
-	return newComp
 }

@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/google/uuid"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -73,27 +72,13 @@ func (r *APIReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func convertAPI(api *v1alpha1.API) *model.API {
-	newApi := &model.API{
+	return &model.API{
 		DisplayName: api.Spec.DisplayName,
 		Description: api.Spec.Description,
+		ApiId:       parseOptionalUUID(api.Spec.ApiId),
 		Version:     parseVersion(api.Spec.Version),
 		Type:        model.ParseApiType(api.Spec.Type),
 		System:      parseSystemRef(api.Spec.SystemId, &api.Spec.SystemRef),
+		Annotations: copyAnnotations(api.ObjectMeta),
 	}
-
-	// parse ID if set
-	if api.Spec.ApiId != "" {
-		uid, err := uuid.Parse(api.Spec.ApiId)
-		if err == nil {
-			newApi.ApiId = uid
-		}
-	}
-
-	// transfer annotations
-	newApi.Annotations = make(map[string]string)
-	for key, value := range api.Annotations {
-		newApi.Annotations[key] = value
-	}
-
-	return newApi
 }
