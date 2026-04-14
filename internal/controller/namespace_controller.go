@@ -65,39 +65,43 @@ func (r *NamespaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	ns := &corev1.Namespace{}
 	err := r.Get(ctx, req.NamespacedName, ns)
-
-	if err == nil {
-		clusterID := r.getClusterContextID()
-
-		// If the root context is not yet known and this is not kube-system, re-queue.
-		if ns.Name != "kube-system" && clusterID == uuid.Nil {
-			return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
-		}
-
-		emCtx := convertNamespaceToContext(ns, clusterID)
-		if emCtx == nil {
-			return ctrl.Result{}, nil
-		}
-
-		if ns.Name == "kube-system" {
-			r.setClusterContextID(emCtx.ContextId)
-		}
-
-		if err := r.Model.AddContext(emCtx, req.Name); err != nil {
-			log.Error(err, "could not add context to model")
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			if req.Name == "kube-system" {
+				r.setClusterContextID(uuid.Nil)
+			}
+			err = r.Model.DeleteContextByResourceName(req.Name)
+			if errors.Is(err, model.ErrContextNotFound) {
+				err = nil
+			}
 			return ctrl.Result{}, err
 		}
-	} else if k8serrors.IsNotFound(err) {
-		err = r.Model.DeleteContextByResourceName(req.Name)
-		if errors.Is(err, model.ErrContextNotFound) {
-			err = nil
-		}
-	} else {
 		log.Error(err, fmt.Sprintf("could not get Namespace %s", req.Name))
 		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, err
+	clusterID := r.getClusterContextID()
+
+	// If the root context is not yet known and this is not kube-system, re-queue.
+	if ns.Name != "kube-system" && clusterID == uuid.Nil {
+		return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
+	}
+
+	emCtx := convertNamespaceToContext(ns, clusterID)
+	if emCtx == nil {
+		return ctrl.Result{}, nil
+	}
+
+	if ns.Name == "kube-system" {
+		r.setClusterContextID(emCtx.ContextId)
+	}
+
+	if err := r.Model.AddContext(emCtx, req.Name); err != nil {
+		log.Error(err, "could not add context to model")
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

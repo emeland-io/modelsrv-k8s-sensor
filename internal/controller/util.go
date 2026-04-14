@@ -111,6 +111,8 @@ func componentInstanceFromMeta(obj client.Object) *model.ComponentInstance {
 	}
 
 	annotations := obj.GetAnnotations()
+	// ComponentRef intentionally left as zero value: native K8s workloads
+	// have no corresponding EmELand Component CRD to reference.
 	ci := &model.ComponentInstance{
 		DisplayName: obj.GetName(),
 		InstanceId:  uid,
