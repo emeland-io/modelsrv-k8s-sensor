@@ -18,10 +18,10 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
-	"github.com/google/uuid"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -42,15 +42,6 @@ type ComponentReconciler struct {
 // +kubebuilder:rbac:groups=structure.emeland.io,resources=components/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=structure.emeland.io,resources=components/finalizers,verbs=update
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Component object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/reconcile
 func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logr.FromContext(ctx)
 
@@ -61,17 +52,19 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		err = r.Model.AddComponent(convertComponent(comp), req.NamespacedName.String(), r.Client.Status())
 		if err != nil {
 			log.Error(err, "could not add component to model")
+			return ctrl.Result{}, err
 		}
-	} else if errors.IsNotFound(err) {
-		err = r.Model.DeleteApiByResourceName(req.NamespacedName.String())
-		if err == model.ApiNotFoundError {
+	} else if k8serrors.IsNotFound(err) {
+		err = r.Model.DeleteComponentByResourceName(req.NamespacedName.String())
+		if errors.Is(err, model.ErrComponentNotFound) {
 			err = nil // ignore a resource that is not even in the model
 		}
 	} else {
 		log.Error(err, fmt.Sprintf("could not get Component %s", req.NamespacedName))
+		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{}, err
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -82,26 +75,12 @@ func (r *ComponentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func convertComponent(comp *v1alpha1.Component) *model.Component {
-	newComp := &model.Component{
+	return &model.Component{
 		DisplayName: comp.Spec.DisplayName,
 		Description: comp.Spec.Description,
+		ComponentId: parseOptionalUUID(comp.Spec.ComponentId),
 		Version:     parseVersion(comp.Spec.Version),
 		System:      parseSystemRef(comp.Spec.SystemId, &comp.Spec.SystemRef),
+		Annotations: copyAnnotations(comp.Annotations),
 	}
-
-	// parse ID if set
-	if comp.Spec.ComponentId != "" {
-		uid, err := uuid.Parse(comp.Spec.ComponentId)
-		if err == nil {
-			newComp.ComponentId = uid
-		}
-	}
-
-	// transfer annotations
-	newComp.Annotations = make(map[string]string)
-	for key, value := range comp.Annotations {
-		newComp.Annotations[key] = value
-	}
-
-	return newComp
 }

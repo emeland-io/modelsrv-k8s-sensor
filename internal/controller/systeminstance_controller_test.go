@@ -94,16 +94,14 @@ var _ = Describe("SystemInstance Controller", func() {
 		AfterEach(func() {
 			// TODO(user): Cleanup logic after each test, like removing the resource instance.
 			resource := &v1alpha1.SystemInstance{}
-			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
+			_ = k8sClient.Get(ctx, typeNamespacedName, resource)
 
 			By("Cleanup the specific resource instance SystemInstance")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
-			model, err := model.NewModel()
-			Expect(err).NotTo(HaveOccurred())
+			model := model.NewModel()
 
 			controllerReconciler := &SystemInstanceReconciler{
 				Client: k8sClient,
@@ -111,9 +109,10 @@ var _ = Describe("SystemInstance Controller", func() {
 				Model:  model,
 			}
 
-			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
+			Expect(err).NotTo(HaveOccurred())
 			sysInstance := model.GetSystemInstanceByResourceName("no-such-resource")
 			Expect(sysInstance).To(BeNil())
 

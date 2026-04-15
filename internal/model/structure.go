@@ -1,21 +1,28 @@
 package model
 
 import (
-	"fmt"
+	"errors"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var SystemNotFoundError error = fmt.Errorf("System not found")
-var ApiNotFoundError error = fmt.Errorf("API not found")
-var ComponentNotFoundError error = fmt.Errorf("Component not found")
-var SystemInstanceNotFoundError error = fmt.Errorf("System Instance not found")
-var ApiInstanceNotFoundError error = fmt.Errorf("API Instance not found")
-var ComponentInstanceNotFoundError error = fmt.Errorf("Component Instance not found")
+var ErrSystemNotFound = errors.New("system not found")
+var ErrApiNotFound = errors.New("API not found")
+var ErrComponentNotFound = errors.New("component not found")
+var ErrSystemInstanceNotFound = errors.New("system instance not found")
+var ErrApiInstanceNotFound = errors.New("API instance not found")
+var ErrComponentInstanceNotFound = errors.New("component instance not found")
+var ErrContextNotFound = errors.New("context not found")
 
 type Model interface {
+	AddContext(ctx *Context, name string) error
+	DeleteContextByResourceName(s string) error
+	GetContextByResourceName(s string) *Context
+	GetContextById(id uuid.UUID) *Context
+
 	AddSystem(sys *System, name string, writer client.SubResourceWriter) error
 	DeleteSystemByResourceName(s string) error
 	GetSystemByResourceName(s string) *System
@@ -48,6 +55,11 @@ type Model interface {
 }
 
 type modelData struct {
+	mu sync.RWMutex
+
+	ContextsByName map[string]*Context
+	ContextsByUUID map[uuid.UUID]*Context
+
 	SystemsByName    map[string]*System
 	APIsByName       map[string]*API
 	ComponentsByName map[string]*Component
@@ -68,8 +80,11 @@ type modelData struct {
 // ensure Model interface is implemented correctly
 var _ Model = (*modelData)(nil)
 
-func NewModel() (*modelData, error) {
-	model := &modelData{
+func NewModel() *modelData {
+	return &modelData{
+		ContextsByName: make(map[string]*Context),
+		ContextsByUUID: make(map[uuid.UUID]*Context),
+
 		SystemsByName:    make(map[string]*System),
 		APIsByName:       make(map[string]*API),
 		ComponentsByName: make(map[string]*Component),
@@ -86,8 +101,6 @@ func NewModel() (*modelData, error) {
 		APIInstancesByUUID:       make(map[uuid.UUID]*APIInstance),
 		ComponentInstancesByUUID: make(map[uuid.UUID]*ComponentInstance),
 	}
-
-	return model, nil
 }
 
 type Version struct {
@@ -240,33 +253,49 @@ type ComponentInstance struct {
 	Annotations    map[string]string
 }
 
+// Context represents an EmELand context, mapped from K8s namespaces and clusters.
+type Context struct {
+	DisplayName string
+	ContextId   uuid.UUID
+	Description string
+	ParentId    uuid.UUID
+	Annotations map[string]string
+}
+
 // AddSystem implements Model.
 func (m *modelData) AddSystem(sys *System, name string, statusWriter client.SubResourceWriter) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	sys.statusWriter = statusWriter
-
 	m.SystemsByName[name] = sys
-
-	// parse parent ref if set
 	if sys.SystemId != uuid.Nil {
 		m.SystemsByUUID[sys.SystemId] = sys
 	}
-
 	return nil
 }
 
 // DeleteSystemByResourceName implements Model.
 func (m *modelData) DeleteSystemByResourceName(s string) error {
-	_, exists := m.SystemsByName[s]
-	if !exists {
-		return SystemNotFoundError
-	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
+	sys, exists := m.SystemsByName[s]
+	if !exists {
+		return ErrSystemNotFound
+	}
 	delete(m.SystemsByName, s)
+	if sys.SystemId != uuid.Nil {
+		delete(m.SystemsByUUID, sys.SystemId)
+	}
 	return nil
 }
 
 // GetSystemByResourceName implements Model.
 func (m *modelData) GetSystemByResourceName(s string) *System {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	system, exists := m.SystemsByName[s]
 	if !exists {
 		return nil
@@ -276,6 +305,9 @@ func (m *modelData) GetSystemByResourceName(s string) *System {
 
 // GetSystemById implements Model.
 func (m *modelData) GetSystemById(id uuid.UUID) *System {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	system, exists := m.SystemsByUUID[id]
 	if !exists {
 		return nil
@@ -285,8 +317,10 @@ func (m *modelData) GetSystemById(id uuid.UUID) *System {
 
 // AddApi implements Model.
 func (m *modelData) AddApi(api *API, name string, writer client.SubResourceWriter) error {
-	api.statusWriter = writer
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
+	api.statusWriter = writer
 	m.APIsByName[name] = api
 	if api.ApiId != uuid.Nil {
 		m.APIsByUUID[api.ApiId] = api
@@ -296,6 +330,9 @@ func (m *modelData) AddApi(api *API, name string, writer client.SubResourceWrite
 
 // AddApiInstance implements Model.
 func (m *modelData) AddApiInstance(instance *APIInstance, name string, writer client.SubResourceWriter) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	m.ApiInstancesByName[name] = instance
 	if instance.InstanceId != uuid.Nil {
 		m.APIInstancesByUUID[instance.InstanceId] = instance
@@ -305,8 +342,10 @@ func (m *modelData) AddApiInstance(instance *APIInstance, name string, writer cl
 
 // AddComponent implements Model.
 func (m *modelData) AddComponent(comp *Component, name string, writer client.SubResourceWriter) error {
-	comp.statusWriter = writer
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
+	comp.statusWriter = writer
 	m.ComponentsByName[name] = comp
 	if comp.ComponentId != uuid.Nil {
 		m.ComponentsByUUID[comp.ComponentId] = comp
@@ -316,6 +355,9 @@ func (m *modelData) AddComponent(comp *Component, name string, writer client.Sub
 
 // AddComponentInstance implements Model.
 func (m *modelData) AddComponentInstance(instance *ComponentInstance, name string, writer client.SubResourceWriter) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	m.ComponentInstancesByName[name] = instance
 	if instance.InstanceId != uuid.Nil {
 		m.ComponentInstancesByUUID[instance.InstanceId] = instance
@@ -325,29 +367,31 @@ func (m *modelData) AddComponentInstance(instance *ComponentInstance, name strin
 
 // AddSystemInstance implements Model.
 func (m *modelData) AddSystemInstance(instance *SystemInstance, name string, writer client.SubResourceWriter) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	instance.statusWriter = writer
-
 	m.SystemInstancesByName[name] = instance
-
 	if instance.InstanceId != uuid.Nil {
 		m.SystemInstancesByUUID[instance.InstanceId] = instance
 	}
-
 	if instance.SystemRef != nil && instance.SystemRef.SystemId != uuid.Nil {
 		system, exists := m.SystemsByUUID[instance.SystemRef.SystemId]
 		if exists {
 			instance.SystemRef.System = system
 		}
-		// TODO: create finding: System not found
 	}
 	return nil
 }
 
 // DeleteApiByResourceName implements Model.
 func (m *modelData) DeleteApiByResourceName(s string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	api, exists := m.APIsByName[s]
 	if !exists {
-		return ApiNotFoundError
+		return ErrApiNotFound
 	}
 	delete(m.APIsByName, s)
 	if api.ApiId != uuid.Nil {
@@ -358,9 +402,12 @@ func (m *modelData) DeleteApiByResourceName(s string) error {
 
 // DeleteApiInstanceByResourceName implements Model.
 func (m *modelData) DeleteApiInstanceByResourceName(s string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	instance, exists := m.ApiInstancesByName[s]
 	if !exists {
-		return ApiInstanceNotFoundError
+		return ErrApiInstanceNotFound
 	}
 	delete(m.ApiInstancesByName, s)
 	if instance.InstanceId != uuid.Nil {
@@ -371,9 +418,12 @@ func (m *modelData) DeleteApiInstanceByResourceName(s string) error {
 
 // DeleteComponentByResourceName implements Model.
 func (m *modelData) DeleteComponentByResourceName(s string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	comp, exists := m.ComponentsByName[s]
 	if !exists {
-		return ComponentNotFoundError
+		return ErrComponentNotFound
 	}
 	delete(m.ComponentsByName, s)
 	if comp.ComponentId != uuid.Nil {
@@ -384,9 +434,12 @@ func (m *modelData) DeleteComponentByResourceName(s string) error {
 
 // DeleteComponentInstanceByResourceName implements Model.
 func (m *modelData) DeleteComponentInstanceByResourceName(s string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	instance, exists := m.ComponentInstancesByName[s]
 	if !exists {
-		return ComponentInstanceNotFoundError
+		return ErrComponentInstanceNotFound
 	}
 	delete(m.ComponentInstancesByName, s)
 	if instance.InstanceId != uuid.Nil {
@@ -397,9 +450,12 @@ func (m *modelData) DeleteComponentInstanceByResourceName(s string) error {
 
 // DeleteSystemInstanceByResourceName implements Model.
 func (m *modelData) DeleteSystemInstanceByResourceName(s string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	instance, exists := m.SystemInstancesByName[s]
 	if !exists {
-		return SystemInstanceNotFoundError
+		return ErrSystemInstanceNotFound
 	}
 	delete(m.SystemInstancesByName, s)
 	if instance.InstanceId != uuid.Nil {
@@ -410,6 +466,9 @@ func (m *modelData) DeleteSystemInstanceByResourceName(s string) error {
 
 // GetApiByResourceName implements Model.
 func (m *modelData) GetApiByResourceName(s string) *API {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	api, exists := m.APIsByName[s]
 	if !exists {
 		return nil
@@ -419,6 +478,9 @@ func (m *modelData) GetApiByResourceName(s string) *API {
 
 // GetApiById implements Model.
 func (m *modelData) GetApiById(id uuid.UUID) *API {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	api, exists := m.APIsByUUID[id]
 	if !exists {
 		return nil
@@ -428,6 +490,9 @@ func (m *modelData) GetApiById(id uuid.UUID) *API {
 
 // GetApiInstanceById implements Model.
 func (m *modelData) GetApiInstanceById(id uuid.UUID) *APIInstance {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	instance, exists := m.APIInstancesByUUID[id]
 	if !exists {
 		return nil
@@ -437,6 +502,9 @@ func (m *modelData) GetApiInstanceById(id uuid.UUID) *APIInstance {
 
 // GetApiInstanceByResourceName implements Model.
 func (m *modelData) GetApiInstanceByResourceName(s string) *APIInstance {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	instance, exists := m.ApiInstancesByName[s]
 	if !exists {
 		return nil
@@ -446,6 +514,9 @@ func (m *modelData) GetApiInstanceByResourceName(s string) *APIInstance {
 
 // GetComponentById implements Model.
 func (m *modelData) GetComponentById(id uuid.UUID) *Component {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	comp, exists := m.ComponentsByUUID[id]
 	if !exists {
 		return nil
@@ -455,6 +526,9 @@ func (m *modelData) GetComponentById(id uuid.UUID) *Component {
 
 // GetComponentByResourceName implements Model.
 func (m *modelData) GetComponentByResourceName(s string) *Component {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	comp, exists := m.ComponentsByName[s]
 	if !exists {
 		return nil
@@ -464,6 +538,9 @@ func (m *modelData) GetComponentByResourceName(s string) *Component {
 
 // GetComponentInstanceById implements Model.
 func (m *modelData) GetComponentInstanceById(id uuid.UUID) *ComponentInstance {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	instance, exists := m.ComponentInstancesByUUID[id]
 	if !exists {
 		return nil
@@ -473,6 +550,9 @@ func (m *modelData) GetComponentInstanceById(id uuid.UUID) *ComponentInstance {
 
 // GetComponentInstanceByResourceName implements Model.
 func (m *modelData) GetComponentInstanceByResourceName(s string) *ComponentInstance {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	instance, exists := m.ComponentInstancesByName[s]
 	if !exists {
 		return nil
@@ -482,6 +562,9 @@ func (m *modelData) GetComponentInstanceByResourceName(s string) *ComponentInsta
 
 // GetSystemInstanceById implements Model.
 func (m *modelData) GetSystemInstanceById(id uuid.UUID) *SystemInstance {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	instance, exists := m.SystemInstancesByUUID[id]
 	if !exists {
 		return nil
@@ -491,9 +574,64 @@ func (m *modelData) GetSystemInstanceById(id uuid.UUID) *SystemInstance {
 
 // GetSystemInstanceByResourceName implements Model.
 func (m *modelData) GetSystemInstanceByResourceName(s string) *SystemInstance {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	instance, exists := m.SystemInstancesByName[s]
 	if !exists {
 		return nil
 	}
 	return instance
+}
+
+// AddContext implements Model.
+func (m *modelData) AddContext(ctx *Context, name string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.ContextsByName[name] = ctx
+	if ctx.ContextId != uuid.Nil {
+		m.ContextsByUUID[ctx.ContextId] = ctx
+	}
+	return nil
+}
+
+// DeleteContextByResourceName implements Model.
+func (m *modelData) DeleteContextByResourceName(s string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	ctx, exists := m.ContextsByName[s]
+	if !exists {
+		return ErrContextNotFound
+	}
+	delete(m.ContextsByName, s)
+	if ctx.ContextId != uuid.Nil {
+		delete(m.ContextsByUUID, ctx.ContextId)
+	}
+	return nil
+}
+
+// GetContextByResourceName implements Model.
+func (m *modelData) GetContextByResourceName(s string) *Context {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	ctx, exists := m.ContextsByName[s]
+	if !exists {
+		return nil
+	}
+	return ctx
+}
+
+// GetContextById implements Model.
+func (m *modelData) GetContextById(id uuid.UUID) *Context {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	ctx, exists := m.ContextsByUUID[id]
+	if !exists {
+		return nil
+	}
+	return ctx
 }

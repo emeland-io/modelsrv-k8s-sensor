@@ -18,10 +18,10 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
-	"github.com/google/uuid"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -42,15 +42,6 @@ type SystemInstanceReconciler struct {
 //+kubebuilder:rbac:groups=structure.emeland.io,resources=systeminstances/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=structure.emeland.io,resources=systeminstances/finalizers,verbs=update
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the SystemInstance object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.16.3/pkg/reconcile
 func (r *SystemInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logr.FromContext(ctx)
 
@@ -61,17 +52,19 @@ func (r *SystemInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		err = r.Model.AddSystemInstance(convertSystemInstance(systemInstance), req.NamespacedName.String(), r.Client.Status())
 		if err != nil {
 			log.Error(err, "could not add systemInstance to model")
+			return ctrl.Result{}, err
 		}
-	} else if errors.IsNotFound(err) {
-		err = r.Model.DeleteApiByResourceName(req.NamespacedName.String())
-		if err == model.ApiNotFoundError {
+	} else if k8serrors.IsNotFound(err) {
+		err = r.Model.DeleteSystemInstanceByResourceName(req.NamespacedName.String())
+		if errors.Is(err, model.ErrSystemInstanceNotFound) {
 			err = nil // ignore a resource that is not even in the model
 		}
 	} else {
 		log.Error(err, fmt.Sprintf("could not get SystemInstance %s", req.NamespacedName))
+		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{}, err
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -82,26 +75,10 @@ func (r *SystemInstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func convertSystemInstance(sysInst *v1alpha1.SystemInstance) *model.SystemInstance {
-	newSysInst := &model.SystemInstance{
+	return &model.SystemInstance{
 		DisplayName: sysInst.Spec.DisplayName,
+		InstanceId:  parseOptionalUUID(sysInst.Spec.InstanceId),
+		SystemRef:   parseSystemRef(sysInst.Spec.SystemId, nil),
+		Annotations: copyAnnotations(sysInst.Annotations),
 	}
-
-	// parse ID if set
-	if sysInst.Spec.InstanceId != "" {
-		uid, err := uuid.Parse(sysInst.Spec.InstanceId)
-		if err == nil {
-			newSysInst.InstanceId = uid
-		}
-	}
-
-	// parse System reference
-	newSysInst.SystemRef = parseSystemRef(sysInst.Spec.SystemId, nil)
-
-	// transfer annotations
-	newSysInst.Annotations = make(map[string]string)
-	for key, value := range sysInst.Annotations {
-		newSysInst.Annotations[key] = value
-	}
-
-	return newSysInst
 }

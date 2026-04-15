@@ -18,10 +18,10 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
-	"github.com/google/uuid"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -52,14 +52,16 @@ func (r *SystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		err = r.Model.AddSystem(convertSystem(sys), req.NamespacedName.String(), r.Client.Status())
 		if err != nil {
 			log.Error(err, "could not add system to model")
+			return ctrl.Result{}, err
 		}
-	} else if errors.IsNotFound(err) {
+	} else if k8serrors.IsNotFound(err) {
 		err = r.Model.DeleteSystemByResourceName(req.NamespacedName.String())
-		if err == model.SystemNotFoundError {
+		if errors.Is(err, model.ErrSystemNotFound) {
 			err = nil // ignore a resource that is not even in the model
 		}
 	} else {
 		log.Error(err, fmt.Sprintf("could not get System %s", req.NamespacedName))
+		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, err
@@ -74,27 +76,11 @@ func (r *SystemReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func convertSystem(sys *v1alpha1.System) *model.System {
-	newSys := &model.System{
+	return &model.System{
 		DisplayName: sys.Spec.DisplayName,
 		Description: sys.Spec.Description,
+		SystemId:    parseOptionalUUID(sys.Spec.SystemId),
+		Version:     parseVersion(sys.Spec.Version),
+		Annotations: copyAnnotations(sys.Annotations),
 	}
-
-	// parse Version
-	newSys.Version = parseVersion(sys.Spec.Version)
-
-	// parse ID if set
-	if sys.Spec.SystemId != "" {
-		uid, err := uuid.Parse(sys.Spec.SystemId)
-		if err == nil {
-			newSys.SystemId = uid
-		}
-	}
-
-	// transfer annotations
-	newSys.Annotations = make(map[string]string)
-	for key, value := range sys.Annotations {
-		newSys.Annotations[key] = value
-	}
-
-	return newSys
 }

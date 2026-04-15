@@ -18,10 +18,10 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
-	"github.com/google/uuid"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -42,15 +42,6 @@ type APIReconciler struct {
 // +kubebuilder:rbac:groups=structure.emeland.io,resources=apis/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=structure.emeland.io,resources=apis/finalizers,verbs=update
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the API object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/reconcile
 func (r *APIReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logr.FromContext(ctx)
 
@@ -61,17 +52,19 @@ func (r *APIReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		err = r.Model.AddApi(convertAPI(api), req.NamespacedName.String(), r.Client.Status())
 		if err != nil {
 			log.Error(err, "could not add api to model")
+			return ctrl.Result{}, err
 		}
-	} else if errors.IsNotFound(err) {
+	} else if k8serrors.IsNotFound(err) {
 		err = r.Model.DeleteApiByResourceName(req.NamespacedName.String())
-		if err == model.ApiNotFoundError {
+		if errors.Is(err, model.ErrApiNotFound) {
 			err = nil // ignore a resource that is not even in the model
 		}
 	} else {
 		log.Error(err, fmt.Sprintf("could not get API %s", req.NamespacedName))
+		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{}, err
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -82,27 +75,13 @@ func (r *APIReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func convertAPI(api *v1alpha1.API) *model.API {
-	newApi := &model.API{
+	return &model.API{
 		DisplayName: api.Spec.DisplayName,
 		Description: api.Spec.Description,
+		ApiId:       parseOptionalUUID(api.Spec.ApiId),
 		Version:     parseVersion(api.Spec.Version),
 		Type:        model.ParseApiType(api.Spec.Type),
 		System:      parseSystemRef(api.Spec.SystemId, &api.Spec.SystemRef),
+		Annotations: copyAnnotations(api.Annotations),
 	}
-
-	// parse ID if set
-	if api.Spec.ApiId != "" {
-		uid, err := uuid.Parse(api.Spec.ApiId)
-		if err == nil {
-			newApi.ApiId = uid
-		}
-	}
-
-	// transfer annotations
-	newApi.Annotations = make(map[string]string)
-	for key, value := range api.Annotations {
-		newApi.Annotations[key] = value
-	}
-
-	return newApi
 }
