@@ -1,0 +1,108 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.1
+  name: systems.structure.emeland.io
+spec:
+  group: structure.emeland.io
+  names:
+    kind: System
+    listKind: SystemList
+    plural: systems
+    singular: system
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: System is the Schema for the systems API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: SystemSpec defines the desired state of System
+            properties:
+              abstract:
+                description: |-
+                  Abstract indicates whether this system is abstract. An abstract system cannot be deployed
+                  and serves as a blueprint for other systems, outside of the scope of the given system.
+                type: boolean
+              description:
+                description: Description is a short description of the system
+                type: string
+              displayName:
+                description: DisplayName is the human friendly name of the system
+                type: string
+              parentRef:
+                description: ParentRef is a reference to the parent system by name
+                  and version, if this system is a specialization of another system.
+                properties:
+                  name:
+                    description: Name of the entity to reference.
+                    type: string
+                  version:
+                    description: Version of the blueprint to reference
+                    type: string
+                required:
+                - name
+                - version
+                type: object
+              systemId:
+                description: |-
+                  SystemId is the unique identifier of the system. It is optional to allow
+                  the controller to assign an ID automatically if not provided by the user.
+                type: string
+              version:
+                description: Version is the version of the system
+                properties:
+                  availableFrom:
+                    description: AvailableFrom is the date when this version became
+                      available.
+                    format: date
+                    type: string
+                  deprecatedFrom:
+                    description: DeprecatedFrom is the date when this version became
+                      deprecated.
+                    format: date
+                    type: string
+                  terminatedFrom:
+                    description: TerminatedFrom is the date when this version became
+                      terminated.
+                    format: date
+                    type: string
+                  version:
+                    description: Version is the identifier of the version, e.g. "1.0.0".
+                      The use of semantic versioning is recommended.
+                    type: string
+                required:
+                - version
+                type: object
+            required:
+            - displayName
+            - version
+            type: object
+          status:
+            description: SystemStatus defines the observed state of System
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

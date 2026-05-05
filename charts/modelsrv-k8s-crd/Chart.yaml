@@ -1,0 +1,7 @@
+apiVersion: v2
+name: modelsrv-k8s-crd
+description: Custom resource definitions for EmELand structure resources (structure.emeland.io)
+type: application
+version: 0.1.0
+# Not tied to the operator image; bump when CRD schema changes.
+appVersion: "0.0.1"

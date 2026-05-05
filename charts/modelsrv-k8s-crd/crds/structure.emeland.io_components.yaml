@@ -1,0 +1,154 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.1
+  name: components.structure.emeland.io
+spec:
+  group: structure.emeland.io
+  names:
+    kind: Component
+    listKind: ComponentList
+    plural: components
+    singular: component
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Component is the Schema for the components API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: ComponentSpec defines the desired state of Component
+            properties:
+              componentId:
+                description: |-
+                  ComponentId is the unique identifier of the Component. It is optional to allow
+                  the controller to assign an ID automatically if not provided by the user.
+                type: string
+              consumes:
+                description: Consumes lists the APIs consumed by this component
+                items:
+                  properties:
+                    apiId:
+                      description: Version of the API to reference
+                      type: string
+                    versionRef:
+                      description: Name of the API to reference.
+                      properties:
+                        name:
+                          description: Name of the API to reference.
+                          type: string
+                        version:
+                          description: Version of the API to reference
+                          type: string
+                      required:
+                      - name
+                      - version
+                      type: object
+                  type: object
+                type: array
+              description:
+                description: Description is a short description of the component
+                type: string
+              displayName:
+                description: DisplayName is the human friendly name of the component
+                type: string
+              provides:
+                description: Provides lists the APIs provided by this component
+                items:
+                  properties:
+                    apiId:
+                      description: Version of the API to reference
+                      type: string
+                    versionRef:
+                      description: Name of the API to reference.
+                      properties:
+                        name:
+                          description: Name of the API to reference.
+                          type: string
+                        version:
+                          description: Version of the API to reference
+                          type: string
+                      required:
+                      - name
+                      - version
+                      type: object
+                  type: object
+                type: array
+              systemId:
+                description: SystemId is a reference to the system by UUID, that this
+                  API belongs to. Either SystemRef or SystemId must be set.
+                type: string
+              systemRef:
+                description: System is a reference to the system by name and version,
+                  that this API belongs to. Either SystemRef or SystemId must be set.
+                properties:
+                  name:
+                    description: Name of the entity to reference.
+                    type: string
+                  version:
+                    description: Version of the blueprint to reference
+                    type: string
+                required:
+                - name
+                - version
+                type: object
+              version:
+                description: Version is the version of the component
+                properties:
+                  availableFrom:
+                    description: AvailableFrom is the date when this version became
+                      available.
+                    format: date
+                    type: string
+                  deprecatedFrom:
+                    description: DeprecatedFrom is the date when this version became
+                      deprecated.
+                    format: date
+                    type: string
+                  terminatedFrom:
+                    description: TerminatedFrom is the date when this version became
+                      terminated.
+                    format: date
+                    type: string
+                  version:
+                    description: Version is the identifier of the version, e.g. "1.0.0".
+                      The use of semantic versioning is recommended.
+                    type: string
+                required:
+                - version
+                type: object
+            required:
+            - consumes
+            - displayName
+            - provides
+            - systemRef
+            - version
+            type: object
+          status:
+            description: ComponentStatus defines the observed state of Component
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
