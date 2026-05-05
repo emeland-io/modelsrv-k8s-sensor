@@ -1,0 +1,23 @@
+{{- if .Values.gateway.tlsRoute.enabled }}
+{{- if empty .Values.gateway.tlsRoute.parentRefs }}
+{{- fail "gateway.tlsRoute.parentRefs must be non-empty when gateway.tlsRoute.enabled is true" }}
+{{- end }}
+apiVersion: {{ .Values.gateway.tlsRoute.apiVersion }}
+kind: TLSRoute
+metadata:
+  name: {{ include "modelsrv-k8s-sensor.fullname" . }}-tls
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "modelsrv-k8s-sensor.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    {{- toYaml .Values.gateway.tlsRoute.parentRefs | nindent 4 }}
+  {{- if .Values.gateway.tlsRoute.hostnames }}
+  hostnames:
+    {{- toYaml .Values.gateway.tlsRoute.hostnames | nindent 4 }}
+  {{- end }}
+  rules:
+    - backendRefs:
+        - name: {{ include "modelsrv-k8s-sensor.fullname" . }}
+          port: {{ .Values.service.port }}
+{{- end }}

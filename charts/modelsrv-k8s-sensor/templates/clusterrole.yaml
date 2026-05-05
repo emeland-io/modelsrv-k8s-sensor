@@ -1,0 +1,162 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "modelsrv-k8s-sensor.fullname" . }}-manager
+  labels:
+    {{- include "modelsrv-k8s-sensor.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - apps
+    resources:
+      - daemonsets
+      - deployments
+      - statefulsets
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - apps
+    resources:
+      - daemonsets/finalizers
+      - deployments/finalizers
+      - statefulsets/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - apps
+    resources:
+      - daemonsets/status
+      - deployments/status
+      - statefulsets/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - batch
+    resources:
+      - cronjobs
+      - jobs
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - batch
+    resources:
+      - cronjobs/finalizers
+      - jobs/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - batch
+    resources:
+      - cronjobs/status
+      - jobs/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - services/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - services/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - networking.k8s.io
+    resources:
+      - ingresses
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - structure.emeland.io
+    resources:
+      - apis
+      - components
+      - systeminstances
+      - systems
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - structure.emeland.io
+    resources:
+      - apis/finalizers
+      - components/finalizers
+      - systeminstances/finalizers
+      - systems/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - structure.emeland.io
+    resources:
+      - apis/status
+      - components/status
+      - systeminstances/status
+      - systems/status
+    verbs:
+      - get
+      - patch
+      - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "modelsrv-k8s-sensor.fullname" . }}-manager
+  labels:
+    {{- include "modelsrv-k8s-sensor.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "modelsrv-k8s-sensor.fullname" . }}-manager
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "modelsrv-k8s-sensor.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

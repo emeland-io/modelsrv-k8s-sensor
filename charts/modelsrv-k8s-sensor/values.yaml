@@ -1,0 +1,87 @@
+replicaCount: 1
+
+image:
+  repository: registry.gitlab.com/emeland/k8s-model
+  tag: latest
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+# Manager container args (controller-runtime)
+manager:
+  leaderElect: true
+  healthProbeBindAddress: ":8081"
+  metricsBindAddress: ":8443"
+  # When false, metrics served over HTTP (not recommended off-cluster).
+  metricsSecure: true
+
+service:
+  type: ClusterIP
+  port: 8443
+  annotations: {}
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 128Mi
+  requests:
+    cpu: 10m
+    memory: 64Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+rbac:
+  create: true
+  metricsAuth:
+    # TokenReview / SubjectAccessReview for secure metrics (--metrics-secure=true).
+    enabled: true
+  metricsReader:
+    # Optional ClusterRoleBinding granting GET /metrics to extra subjects (e.g. Prometheus).
+    enabled: false
+    subjects: []
+
+# When true, install modelsrv-k8s-crd as a subchart (same release). Default false for GitOps / cluster-admin CRD ownership.
+crd:
+  install:
+    enabled: false
+
+gateway:
+  tlsRoute:
+    enabled: false
+    apiVersion: gateway.networking.k8s.io/v1alpha2
+    # Required when enabled. Example:
+    # parentRefs:
+    #   - group: gateway.networking.k8s.io
+    #     kind: Gateway
+    #     name: my-gateway
+    #     namespace: gateway-system
+    parentRefs: []
+    hostnames: []
+
+operator:
+  emelandIdentity:
+    enabled: true
+  systemName: ""
+  apiName: ""
+  componentName: ""
+  displayName: "modelsrv k8s sensor"
+  description: "Kubernetes sensor for EmELand structure resources."
+  systemVersion: ""
+  apiDisplayName: "modelsrv sensor metrics API"
+  apiDescription: "Controller-runtime secure metrics and integration endpoint."
+  apiType: Other
+  componentDisplayName: "modelsrv k8s sensor"
+  componentDescription: "Operator workload component."

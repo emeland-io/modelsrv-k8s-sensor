@@ -1,0 +1,22 @@
+{{- if .Values.operator.emelandIdentity.enabled }}
+apiVersion: structure.emeland.io/v1alpha1
+kind: Component
+metadata:
+  name: {{ include "modelsrv-k8s-sensor.operatorComponentName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "modelsrv-k8s-sensor.labels" . | nindent 4 }}
+spec:
+  displayName: {{ .Values.operator.componentDisplayName | quote }}
+  description: {{ .Values.operator.componentDescription | quote }}
+  version:
+    version: {{ include "modelsrv-k8s-sensor.operatorVersion" . | quote }}
+  systemRef:
+    name: {{ include "modelsrv-k8s-sensor.operatorSystemName" . | quote }}
+    version: {{ include "modelsrv-k8s-sensor.operatorVersion" . | quote }}
+  consumes: []
+  provides:
+    - versionRef:
+        name: {{ include "modelsrv-k8s-sensor.operatorApiName" . | quote }}
+        version: {{ include "modelsrv-k8s-sensor.operatorVersion" . | quote }}
+{{- end }}
