@@ -22,6 +22,8 @@ podLabels: {}
 manager:
   leaderElect: true
   healthProbeBindAddress: ":8081"
+  # Must match the TCP port in healthProbeBindAddress (used for liveness/readiness httpGet).
+  healthProbePort: 8081
   metricsBindAddress: ":8443"
   # When false, metrics served over HTTP (not recommended off-cluster).
   metricsSecure: true
@@ -47,6 +49,7 @@ rbac:
   create: true
   metricsAuth:
     # TokenReview / SubjectAccessReview for secure metrics (--metrics-secure=true).
+    # Ignored when manager.metricsSecure is false (no authz filter on the metrics server).
     enabled: true
   metricsReader:
     # Optional ClusterRoleBinding granting GET /metrics to extra subjects (e.g. Prometheus).

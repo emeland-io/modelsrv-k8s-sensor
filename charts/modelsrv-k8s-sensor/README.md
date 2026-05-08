@@ -43,4 +43,4 @@ Set `operator.emelandIdentity.enabled=false` to skip creating `System`, `API`, a
 
 ## Upgrading
 
-Bump chart `version` in `Chart.yaml` for chart changes; set `appVersion` to match the container image tag you deploy.
+Bump chart **`version`** in `Chart.yaml` when the chart packaging changes. After **`make manifests`**, Helm **`appVersion`** in both operator and CRD `Chart.yaml` files is rewritten from the Makefile **`VERSION`** (keep that in sync with the image tag you ship). Operator-only chart edits use the same workflow.

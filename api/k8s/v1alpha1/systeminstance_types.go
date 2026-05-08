@@ -41,8 +41,8 @@ type SystemInstanceSpec struct {
 type SystemInstanceStatus struct {
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
 
 // SystemInstance is the Schema for the systeminstances API
 type SystemInstance struct {
@@ -53,7 +53,7 @@ type SystemInstance struct {
 	Status SystemInstanceStatus `json:"status,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
 // SystemInstanceList contains a list of SystemInstance
 type SystemInstanceList struct {

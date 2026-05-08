@@ -63,6 +63,7 @@
       "required": [
         "leaderElect",
         "healthProbeBindAddress",
+        "healthProbePort",
         "metricsBindAddress",
         "metricsSecure"
       ],
@@ -72,6 +73,12 @@
           "type": "string",
           "minLength": 1,
           "description": "Address for /healthz and /readyz (e.g. :8081)"
+        },
+        "healthProbePort": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "Container port for probes; must match healthProbeBindAddress"
         },
         "metricsBindAddress": {
           "oneOf": [

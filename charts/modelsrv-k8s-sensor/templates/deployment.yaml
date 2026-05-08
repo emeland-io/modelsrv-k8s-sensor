@@ -48,6 +48,13 @@ spec:
             {{- if not .Values.manager.metricsSecure }}
             - --metrics-secure=false
             {{- end }}
+          ports:
+            - name: https
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+            - name: probes
+              containerPort: {{ .Values.manager.healthProbePort }}
+              protocol: TCP
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -56,13 +63,13 @@ spec:
           livenessProbe:
             httpGet:
               path: /healthz
-              port: 8081
+              port: probes
             initialDelaySeconds: 15
             periodSeconds: 20
           readinessProbe:
             httpGet:
               path: /readyz
-              port: 8081
+              port: probes
             initialDelaySeconds: 5
             periodSeconds: 10
           resources:

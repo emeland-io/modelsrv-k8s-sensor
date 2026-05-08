@@ -46,7 +46,7 @@ type NamespaceReconciler struct {
 	clusterContextID uuid.UUID
 }
 
-//+kubebuilder:rbac:groups=core,resources=namespaces,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=namespaces,verbs=get;list;watch
 
 func (r *NamespaceReconciler) getClusterContextID() uuid.UUID {
 	r.mu.RLock()
