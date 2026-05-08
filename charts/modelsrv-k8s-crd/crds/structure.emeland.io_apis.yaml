@@ -17,12 +17,7 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: |-
-          API is a Phase 1 EmELand resource describing a potential communication channel between
-          components. In concrete mappings it may encompass many techniques at once—a Kubernetes Service,
-          an Ingress, a load balancer, firewall rules, and similar—all treated as facets of one logical
-          interface. APIs belong to a System together with Components. See Phase 1: System Structure —
-          https://emeland.io/docs/model/phase1-system-structure/.
+        description: API is the Schema for the apis API
         properties:
           apiVersion:
             description: |-
@@ -42,10 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: |-
-              Desired state for this logical API blueprint within its System. EmELand Phase 1 models
-              the interface abstraction; pairing one providing Component and consumers is expressed
-              through Component provides/consumes relationships (and instance-level resources when used).
+            description: APISpec defines the desired state of API
             properties:
               apiId:
                 description: |-
@@ -63,8 +55,8 @@ spec:
                   API belongs to. Either SystemRef or SystemId must be set.
                 type: string
               systemRef:
-                description: Reference to the System (name and version) that owns this API. Either
-                  SystemRef or SystemId must be set.
+                description: System is a reference to the system by name and version,
+                  that this API belongs to. Either SystemRef or SystemId must be set.
                 properties:
                   name:
                     description: Name of the entity to reference.
@@ -77,10 +69,8 @@ spec:
                 - version
                 type: object
               type:
-                description: |-
-                  Classify the technical style of this API surface (OpenAPI, GraphQL, gRPC, Other). In
-                  Phase 1 the API type is model metadata; how it maps to running infrastructure is
-                  defined by your mapping implementation.
+                description: Type is the type of the API, e.g. OpenAPI, GraphQL, gRPC,
+                  etc.
                 enum:
                 - OpenAPI
                 - GraphQL
@@ -88,9 +78,7 @@ spec:
                 - Other
                 type: string
               version:
-                description: |-
-                  Version metadata for this API definition. EmELand recommends semantic versioning; APIs
-                  SHOULD be versioned under Phase 1 rules.
+                description: Version is the version of the API
                 properties:
                   availableFrom:
                     description: AvailableFrom is the date when this version became

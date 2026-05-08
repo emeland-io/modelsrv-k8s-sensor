@@ -17,13 +17,7 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: |-
-          System is a Phase 1 EmELand resource—a foundational blueprint for part of your landscape.
-          Components and APIs belong to Systems; hierarchical Systems (and Sub-Systems) compose larger
-          designs through Parent relationships. Abstract Systems capture intent without implying a runnable
-          internal composition—often documenting externally provided APIs. A concrete System blueprint is
-          versioned separately from where it runs; running contexts use SystemInstance. See Phase 1:
-          System Structure — https://emeland.io/docs/model/phase1-system-structure/.
+        description: System is the Schema for the systems API
         properties:
           apiVersion:
             description: |-
@@ -43,16 +37,12 @@ spec:
           metadata:
             type: object
           spec:
-            description: |-
-              Blueprint-level definition of this System within Phase 1. Subordinate Systems specialize a
-              parent via parentRef; every System MUST carry version metadata describing the blueprint.
+            description: SystemSpec defines the desired state of System
             properties:
               abstract:
                 description: |-
-                  When true this System acts as an abstract subsystem (black-box view): Phase 1 allows it
-                  to document externally visible APIs without enumerating inner Components—the internal
-                  implementation is deliberately omitted so vendor or appliance boundaries remain opaque while
-                  you still declare communication intersections.
+                  Abstract indicates whether this system is abstract. An abstract system cannot be deployed
+                  and serves as a blueprint for other systems, outside of the scope of the given system.
                 type: boolean
               description:
                 description: Description is a short description of the system
@@ -61,11 +51,8 @@ spec:
                 description: DisplayName is the human friendly name of the system
                 type: string
               parentRef:
-                description: |-
-                  References the Parent System blueprint (name + version) when this System is positioned
-                  in the hierarchical structure of Phase 1. A Parent System MAY be instantiated without
-                  forcing every child Sub-System blueprint to instantiate—overall compositions become optional
-                  at deployment time via SystemInstance granularity.
+                description: ParentRef is a reference to the parent system by name
+                  and version, if this system is a specialization of another system.
                 properties:
                   name:
                     description: Name of the entity to reference.
@@ -83,10 +70,7 @@ spec:
                   the controller to assign an ID automatically if not provided by the user.
                 type: string
               version:
-                description: |-
-                  Version metadata for this System blueprint. Systems MUST be versioned in Phase 1; when multiple
-                  concurrent versions remain valid the matching SystemInstance must record which blueprint
-                  version applies in its context.
+                description: Version is the version of the system
                 properties:
                   availableFrom:
                     description: AvailableFrom is the date when this version became

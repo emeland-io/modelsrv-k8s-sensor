@@ -17,13 +17,7 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: |-
-          Component is a Phase 1 EmELand resource for any executable logic (scripts, binaries, containers,
-          etc.). It communicates with other Components via API resources—those provided belong to the
-          same System; consumed APIs may be in this System or another. A Component expresses intent,
-          not configuration details (deployment and values are intentionally out-of-scope relative to the
-          EmELand model). See Phase 1: System Structure —
-          https://emeland.io/docs/model/phase1-system-structure/.
+        description: Component is the Schema for the components API
         properties:
           apiVersion:
             description: |-
@@ -43,9 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: |-
-              Desired state describing this Component within its System—how it provides and consumes
-              APIs—not the concrete configuration Helm, OCM, or similar tools attach to workloads.
+            description: ComponentSpec defines the desired state of Component
             properties:
               componentId:
                 description: |-
@@ -53,9 +45,7 @@ spec:
                   the controller to assign an ID automatically if not provided by the user.
                 type: string
               consumes:
-                description: |-
-                  APIs this Component consumes for outbound communication—references may resolve to APIs
-                  in the same System or in another System.
+                description: Consumes lists the APIs consumed by this component
                 items:
                   properties:
                     apiId:
@@ -83,9 +73,7 @@ spec:
                 description: DisplayName is the human friendly name of the component
                 type: string
               provides:
-                description: |-
-                  APIs this Component provides; exposed interfaces belong to the same System as this
-                  Component under EmELand Phase 1 rules.
+                description: Provides lists the APIs provided by this component
                 items:
                   properties:
                     apiId:
@@ -107,12 +95,12 @@ spec:
                   type: object
                 type: array
               systemId:
-                description: SystemId is a reference to the System by UUID that this
-                  Component belongs to. Either SystemRef or SystemId must be set.
+                description: SystemId is a reference to the system by UUID, that this
+                  API belongs to. Either SystemRef or SystemId must be set.
                 type: string
               systemRef:
-                description: Reference to the System by name and version that this Component
-                  belongs to. Either SystemRef or SystemId must be set.
+                description: System is a reference to the system by name and version,
+                  that this API belongs to. Either SystemRef or SystemId must be set.
                 properties:
                   name:
                     description: Name of the entity to reference.

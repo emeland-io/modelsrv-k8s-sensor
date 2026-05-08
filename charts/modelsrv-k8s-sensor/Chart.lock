@@ -1,6 +1,0 @@
-dependencies:
-- name: modelsrv-k8s-crd
-  repository: file://../modelsrv-k8s-crd
-  version: 0.1.0
-digest: sha256:87301f58674782c90ee4c680a54992a4ce78e58edb10659d736cec84ca3671ee
-generated: "2026-05-04T15:33:56.673706+02:00"

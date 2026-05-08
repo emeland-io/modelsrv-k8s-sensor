@@ -1,0 +1,270 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "modelsrv-k8s-sensor",
+  "description": "Values for the modelsrv-k8s-sensor Helm chart",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "replicaCount": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of controller manager replicas"
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "tag", "pullPolicy"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string" },
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["Always", "Never", "IfNotPresent"]
+        }
+      }
+    },
+    "imagePullSecrets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": { "type": "string" },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["create", "annotations", "name"],
+      "properties": {
+        "create": { "type": "boolean" },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "name": { "type": "string" }
+      }
+    },
+    "podAnnotations": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "podLabels": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "manager": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "leaderElect",
+        "healthProbeBindAddress",
+        "metricsBindAddress",
+        "metricsSecure"
+      ],
+      "properties": {
+        "leaderElect": { "type": "boolean" },
+        "healthProbeBindAddress": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Address for /healthz and /readyz (e.g. :8081)"
+        },
+        "metricsBindAddress": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "description": "Metrics listen address (e.g. :8443)"
+            },
+            {
+              "type": "integer",
+              "enum": [0],
+              "description": "Disable metrics server (YAML unquoted 0)"
+            }
+          ],
+          "description": "Metrics listen address (e.g. :8443); use \"0\" or integer 0 to disable"
+        },
+        "metricsSecure": { "type": "boolean" }
+      }
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "port", "annotations"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["ClusterIP", "NodePort", "LoadBalancer", "ExternalName"]
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "limits": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "properties": {
+            "cpu": { "type": "string" },
+            "memory": { "type": "string" },
+            "ephemeral-storage": { "type": "string" }
+          }
+        },
+        "requests": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "properties": {
+            "cpu": { "type": "string" },
+            "memory": { "type": "string" },
+            "ephemeral-storage": { "type": "string" }
+          }
+        }
+      }
+    },
+    "nodeSelector": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "tolerations": {
+      "type": "array"
+    },
+    "affinity": {
+      "type": "object"
+    },
+    "rbac": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["create", "metricsAuth", "metricsReader"],
+      "properties": {
+        "create": { "type": "boolean" },
+        "metricsAuth": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" }
+          }
+        },
+        "metricsReader": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "subjects"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "subjects": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["kind", "name"],
+                "additionalProperties": true,
+                "properties": {
+                  "kind": { "type": "string", "minLength": 1 },
+                  "name": { "type": "string", "minLength": 1 },
+                  "namespace": { "type": "string" },
+                  "apiGroup": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "gateway": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tlsRoute"],
+      "properties": {
+        "tlsRoute": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "apiVersion",
+            "parentRefs",
+            "hostnames"
+          ],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "apiVersion": { "type": "string", "minLength": 1 },
+            "parentRefs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["name", "kind"],
+                "additionalProperties": true,
+                "properties": {
+                  "group": { "type": "string" },
+                  "kind": { "type": "string" },
+                  "name": { "type": "string" },
+                  "namespace": { "type": "string" },
+                  "sectionName": { "type": "string" },
+                  "port": { "type": "integer" }
+                }
+              }
+            },
+            "hostnames": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "operator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "emelandIdentity",
+        "systemName",
+        "apiName",
+        "componentName",
+        "displayName",
+        "description",
+        "systemVersion",
+        "apiDisplayName",
+        "apiDescription",
+        "apiType",
+        "componentDisplayName",
+        "componentDescription"
+      ],
+      "properties": {
+        "emelandIdentity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" }
+          }
+        },
+        "systemName": { "type": "string" },
+        "apiName": { "type": "string" },
+        "componentName": { "type": "string" },
+        "displayName": { "type": "string" },
+        "description": { "type": "string" },
+        "systemVersion": { "type": "string" },
+        "apiDisplayName": { "type": "string" },
+        "apiDescription": { "type": "string" },
+        "apiType": {
+          "type": "string",
+          "enum": ["OpenAPI", "GraphQL", "gRPC", "Other"]
+        },
+        "componentDisplayName": { "type": "string" },
+        "componentDescription": { "type": "string" }
+      }
+    }
+  }
+}

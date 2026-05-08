@@ -17,13 +17,7 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: |-
-          SystemInstance records one concrete realization of an abstract Phase 1 System in a deployment
-          context—the live slice of landscape where Components wire through APIs versus the blueprint-only
-          System resource. Instances capture how communicated relationships materialize across environments while
-          the parent System hierarchy still governs structure at the blueprint layer (Phase 1 currently keeps
-          parent relationships on System, not duplicated on instances). See Phase 1: System Structure —
-          https://emeland.io/docs/model/phase1-system-structure/.
+        description: SystemInstance is the Schema for the systeminstances API
         properties:
           apiVersion:
             description: |-
@@ -43,25 +37,19 @@ spec:
           metadata:
             type: object
           spec:
-            description: |-
-              Identifies which running System occurrence this Instance represents—including the blueprint
-              System it instantiates—and human-oriented labels automation can surface in consoles.
+            description: SystemInstanceSpec defines the desired state of SystemInstance
             properties:
               displayName:
                 description: |-
-                  Human-friendly label for operators to recognise this occurrence. Automated systems SHOULD
-                  continue to key off instanceId; aim for uniqueness across broader IT footprints when
-                  possible.
+                  DisplayName is indented as a label to display for humans to recognize this system instance.
+                  Machines should use the InstanceId above instead. Ideally this would be unique across an overall IT-System.
                 type: string
               instanceId:
-                description: |-
-                  Stable machine identifier for this SystemInstance—use this when correlating runtime signals,
-                  inventories, or EmELand identity mappings back to Phase 1 structure.
+                description: InstanceId is the unique identifier of this system instance.
                 type: string
               systemId:
-                description: |-
-                  UUID linkage to the abstract System blueprint this occurrence represents within Phase 1—use
-                  it to anchor runtime inventory and observability signals on the modeled System definition.
+                description: SystemId is a reference to the system by UUID, that this
+                  instance belongs to.
                 type: string
             required:
             - displayName

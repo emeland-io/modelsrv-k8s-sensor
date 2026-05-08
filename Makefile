@@ -94,6 +94,16 @@ help: ## Display this help.
 
 ##@ Development
 
+# Helm CRD chart consumes the same YAML as kustomize/kubebuilder (config/crd/bases).
+CRD_BASE_DIR ?= config/crd/bases
+CRD_CHART_DIR ?= charts/modelsrv-k8s-crd/crds
+
+.PHONY: copy-crd
+copy-crd: ## Copy CRD YAML from config/crd/bases into charts/modelsrv-k8s-crd/crds (single source of truth).
+	mkdir -p $(CRD_CHART_DIR)
+	rm -f $(CRD_CHART_DIR)/structure.emeland.io_*.yaml
+	cp $(CRD_BASE_DIR)/structure.emeland.io_*.yaml $(CRD_CHART_DIR)/
+
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
@@ -210,7 +220,7 @@ GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.4.3
-CONTROLLER_TOOLS_VERSION ?= v0.16.1
+CONTROLLER_GEN_VERSION ?= v0.17.2
 ENVTEST_VERSION ?= release-0.19
 GOLANGCI_LINT_VERSION ?= v1.59.1
 
@@ -222,7 +232,7 @@ $(KUSTOMIZE): $(LOCALBIN)
 .PHONY: controller-gen
 controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
 $(CONTROLLER_GEN): $(LOCALBIN)
-	$(call go-install-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen,$(CONTROLLER_TOOLS_VERSION))
+	$(call go-install-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen,$(CONTROLLER_GEN_VERSION))
 
 .PHONY: envtest
 envtest: $(ENVTEST) ## Download setup-envtest locally if necessary.

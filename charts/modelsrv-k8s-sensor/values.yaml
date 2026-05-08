@@ -53,11 +53,6 @@ rbac:
     enabled: false
     subjects: []
 
-# When true, install modelsrv-k8s-crd as a subchart (same release). Default false for GitOps / cluster-admin CRD ownership.
-crd:
-  install:
-    enabled: false
-
 gateway:
   tlsRoute:
     enabled: false

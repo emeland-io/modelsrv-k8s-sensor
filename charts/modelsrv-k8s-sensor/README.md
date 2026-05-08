@@ -15,6 +15,8 @@ Deploys the EmELand Kubernetes sensor operator: `Deployment`, metrics `Service` 
 
 ## Install operator
 
+Install the CRD chart first (see Prerequisites), then deploy the operator:
+
 ```bash
 helm install modelsrv-k8s ./charts/modelsrv-k8s-sensor \
   --namespace emeland-system \
@@ -23,15 +25,6 @@ helm install modelsrv-k8s ./charts/modelsrv-k8s-sensor \
 ```
 
 Default image repository: `registry.gitlab.com/emeland/k8s-model` (see `values.yaml`).
-
-### Optional: install CRDs with the same release
-
-```bash
-helm install modelsrv-k8s ./charts/modelsrv-k8s-sensor \
-  --set crd.install.enabled=true
-```
-
-Run `helm dependency update ./charts/modelsrv-k8s-sensor` before packaging so the subchart is vendored under `charts/`.
 
 ### Optional: TLSRoute
 

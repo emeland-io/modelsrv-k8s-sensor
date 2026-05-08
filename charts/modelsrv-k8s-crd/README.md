@@ -2,6 +2,8 @@
 
 Installs the `structure.emeland.io` CRDs (`System`, `API`, `Component`, `SystemInstance`).
 
+CRD files under `crds/` are produced from `config/crd/bases` (see `make copy-crd`; run after `make manifests` when APIs change).
+
 ## Install
 
 ```bash
