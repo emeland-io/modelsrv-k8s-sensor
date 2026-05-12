@@ -107,6 +107,10 @@ copy-crd: ## Copy CRD YAML from config/crd/bases into charts/modelsrv-k8s-crd/cr
 	rm -f $(CRD_CHART_DIR)/structure.emeland.io_*.yaml
 	cp $(CRD_BASE_DIR)/structure.emeland.io_*.yaml $(CRD_CHART_DIR)/
 
+.PHONY: copy-rbac
+copy-rbac: ## Sync ClusterRole rules from generated RBAC into Helm chart (single source of truth).
+	@yq '.rules' config/rbac/role.yaml > charts/modelsrv-k8s-sensor/files/manager-rules.yaml
+
 .PHONY: sync-helm-appversion
 sync-helm-appversion: ## Set appVersion in Helm Chart.yaml files to VERSION (chart "version" bumps are still manual).
 	@for f in $(HELM_CHART_YAMLS); do \
@@ -116,7 +120,7 @@ sync-helm-appversion: ## Set appVersion in Helm Chart.yaml files to VERSION (cha
 .PHONY: manifests
 manifests: controller-gen ## Generate CRD/RBAC; copy CRDs into Helm chart; sync Helm appVersion from VERSION.
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
-	@$(MAKE) copy-crd sync-helm-appversion
+	@$(MAKE) copy-crd copy-rbac sync-helm-appversion
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
