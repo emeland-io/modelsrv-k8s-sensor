@@ -57,9 +57,33 @@ rules:
       - systeminstances
       - systems
     verbs:
+      - create
+      - delete
       - get
       - list
+      - patch
+      - update
       - watch
+  - apiGroups:
+      - structure.emeland.io
+    resources:
+      - apis/status
+      - components/status
+      - systeminstances/status
+      - systems/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - structure.emeland.io
+    resources:
+      - apis/finalizers
+      - components/finalizers
+      - systeminstances/finalizers
+      - systems/finalizers
+    verbs:
+      - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
