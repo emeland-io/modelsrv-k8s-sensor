@@ -38,9 +38,9 @@ type SystemInstanceReconciler struct {
 	Model  model.Model
 }
 
-//+kubebuilder:rbac:groups=structure.emeland.io,resources=systeminstances,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=structure.emeland.io,resources=systeminstances/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=structure.emeland.io,resources=systeminstances/finalizers,verbs=update
+// +kubebuilder:rbac:groups=structure.emeland.io,resources=systeminstances,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=structure.emeland.io,resources=systeminstances/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=structure.emeland.io,resources=systeminstances/finalizers,verbs=update
 
 func (r *SystemInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logr.FromContext(ctx)

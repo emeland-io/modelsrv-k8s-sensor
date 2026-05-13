@@ -94,9 +94,33 @@ help: ## Display this help.
 
 ##@ Development
 
+# Helm CRD chart consumes the same YAML as kustomize/kubebuilder (config/crd/bases).
+CRD_BASE_DIR ?= config/crd/bases
+CRD_CHART_DIR ?= charts/modelsrv-k8s-crd/crds
+
+# Helm Chart.yaml files whose appVersion tracks the operator / project release (VERSION).
+HELM_CHART_YAMLS ?= charts/modelsrv-k8s-sensor/Chart.yaml charts/modelsrv-k8s-crd/Chart.yaml
+
+.PHONY: copy-crd
+copy-crd: ## Copy CRD YAML from config/crd/bases into charts/modelsrv-k8s-crd/crds (single source of truth).
+	mkdir -p $(CRD_CHART_DIR)
+	rm -f $(CRD_CHART_DIR)/structure.emeland.io_*.yaml
+	cp $(CRD_BASE_DIR)/structure.emeland.io_*.yaml $(CRD_CHART_DIR)/
+
+.PHONY: copy-rbac
+copy-rbac: ## Sync ClusterRole rules from generated RBAC into Helm chart (single source of truth).
+	@yq '.rules' config/rbac/role.yaml > charts/modelsrv-k8s-sensor/files/manager-rules.yaml
+
+.PHONY: sync-helm-appversion
+sync-helm-appversion: ## Set appVersion in Helm Chart.yaml files to VERSION (chart "version" bumps are still manual).
+	@for f in $(HELM_CHART_YAMLS); do \
+		sed "s/^appVersion:.*/appVersion: \"$(VERSION)\"/" $$f > $$f.manifests.tmp && mv $$f.manifests.tmp $$f; \
+	done
+
 .PHONY: manifests
-manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
+manifests: controller-gen ## Generate CRD/RBAC; copy CRDs into Helm chart; sync Helm appVersion from VERSION.
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	@$(MAKE) copy-crd copy-rbac sync-helm-appversion
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
@@ -210,7 +234,7 @@ GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.4.3
-CONTROLLER_TOOLS_VERSION ?= v0.16.1
+CONTROLLER_GEN_VERSION ?= v0.17.2
 ENVTEST_VERSION ?= release-0.19
 GOLANGCI_LINT_VERSION ?= v1.59.1
 
@@ -222,7 +246,7 @@ $(KUSTOMIZE): $(LOCALBIN)
 .PHONY: controller-gen
 controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
 $(CONTROLLER_GEN): $(LOCALBIN)
-	$(call go-install-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen,$(CONTROLLER_TOOLS_VERSION))
+	$(call go-install-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen,$(CONTROLLER_GEN_VERSION))
 
 .PHONY: envtest
 envtest: $(ENVTEST) ## Download setup-envtest locally if necessary.

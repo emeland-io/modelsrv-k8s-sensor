@@ -1,0 +1,6 @@
+apiVersion: v2
+name: modelsrv-k8s-sensor
+description: EmELand Kubernetes sensor operator (structure.emeland.io controller)
+type: application
+version: 0.1.0
+appVersion: "0.0.1"

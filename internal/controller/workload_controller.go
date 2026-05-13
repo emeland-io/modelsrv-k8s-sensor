@@ -33,8 +33,8 @@ import (
 // WorkloadReconciler maps native K8s workload resources to ComponentInstance.
 // It handles Deployment, StatefulSet, DaemonSet, CronJob, and Job.
 //
-//+kubebuilder:rbac:groups=apps,resources=deployments;statefulsets;daemonsets,verbs=get;list;watch
-//+kubebuilder:rbac:groups=batch,resources=jobs;cronjobs,verbs=get;list;watch
+// +kubebuilder:rbac:groups=apps,resources=deployments;statefulsets;daemonsets,verbs=get;list;watch
+// +kubebuilder:rbac:groups=batch,resources=jobs;cronjobs,verbs=get;list;watch
 type WorkloadReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme

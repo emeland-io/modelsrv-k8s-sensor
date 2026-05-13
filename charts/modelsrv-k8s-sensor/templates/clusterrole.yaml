@@ -1,0 +1,25 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "modelsrv-k8s-sensor.fullname" . }}-manager
+  labels:
+    {{- include "modelsrv-k8s-sensor.labels" . | nindent 4 }}
+rules:
+{{- .Files.Get "files/manager-rules.yaml" | nindent 2 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "modelsrv-k8s-sensor.fullname" . }}-manager
+  labels:
+    {{- include "modelsrv-k8s-sensor.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "modelsrv-k8s-sensor.fullname" . }}-manager
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "modelsrv-k8s-sensor.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

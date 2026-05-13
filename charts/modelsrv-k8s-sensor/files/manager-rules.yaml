@@ -1,0 +1,78 @@
+- apiGroups:
+    - apps
+  resources:
+    - daemonsets
+    - deployments
+    - statefulsets
+  verbs:
+    - get
+    - list
+    - watch
+- apiGroups:
+    - batch
+  resources:
+    - cronjobs
+    - jobs
+  verbs:
+    - get
+    - list
+    - watch
+- apiGroups:
+    - ""
+  resources:
+    - services
+  verbs:
+    - get
+    - list
+    - watch
+- apiGroups:
+    - ""
+  resources:
+    - namespaces
+  verbs:
+    - get
+    - list
+    - watch
+- apiGroups:
+    - networking.k8s.io
+  resources:
+    - ingresses
+  verbs:
+    - get
+    - list
+    - watch
+- apiGroups:
+    - structure.emeland.io
+  resources:
+    - apis
+    - components
+    - systeminstances
+    - systems
+  verbs:
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - update
+    - watch
+- apiGroups:
+    - structure.emeland.io
+  resources:
+    - apis/finalizers
+    - components/finalizers
+    - systeminstances/finalizers
+    - systems/finalizers
+  verbs:
+    - update
+- apiGroups:
+    - structure.emeland.io
+  resources:
+    - apis/status
+    - components/status
+    - systeminstances/status
+    - systems/status
+  verbs:
+    - get
+    - patch
+    - update

@@ -33,8 +33,8 @@ import (
 // APIInstanceReconciler maps native K8s resources to APIInstance.
 // It handles Service and Ingress.
 //
-//+kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch
-//+kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch
 type APIInstanceReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
