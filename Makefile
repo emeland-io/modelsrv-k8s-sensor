@@ -153,9 +153,13 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 
 ##@ Build
 
-.PHONY: build
-build: manifests generate fmt vet ## Build manager binary.
+.PHONY: go-build
+go-build: 
 	go build -o bin/manager cmd/main.go
+
+.PHONY: build
+build: manifests generate fmt vet go-build ## Build manager binary.
+	echo "Build complete. Binary is located at bin/manager"
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.

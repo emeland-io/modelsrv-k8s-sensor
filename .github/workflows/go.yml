@@ -21,25 +21,25 @@ jobs:
       with:
         go-version: '1.26.x'
 
-    - name: Install tools
-      run: make tools
+    - name: Manifests
+      run: make manifests
 
     - name: Generate
-      run: go generate -v ./...
+      run: make generate
 
     - name: Format
-      run: go fmt ./...
+      run: make fmt
 
     - name: Vet
-      run: go vet ./...
+      run: make vet
 
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v9
       with:
         version: v2.11.3
 
-    - name: Nilaway
-      run: make nilaway
+    - name: Build
+      run: make go-build
 
     - name: Test
-      run: go test -v ./...
+      run: make test
