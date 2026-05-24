@@ -1,5 +1,5 @@
 #
-name: Create and publish a Docker image
+name: Create a Docker image
 
 # Configures this workflow to run on every push request for the main branch.
 # But it will not publish a Docker image until a change is pushed to the branch called `main`.
