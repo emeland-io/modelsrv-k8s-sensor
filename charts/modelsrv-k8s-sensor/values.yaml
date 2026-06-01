@@ -1,8 +1,8 @@
 replicaCount: 1
 
 image:
-  repository: registry.gitlab.com/emeland/k8s-model
-  tag: latest
+  repository: ghcr.io/emeland-io/modelsrv-k8s-sensor
+  tag: ""
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []

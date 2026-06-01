@@ -1,0 +1,85 @@
+name: Publish Helm charts
+
+on:
+  workflow_run:
+    workflows: ["Create and publish a Docker image"]
+    types: [completed]
+
+env:
+  REGISTRY: ghcr.io
+  HELM_OCI_REGISTRY: ghcr.io/emeland-io/charts
+
+jobs:
+  publish-charts:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout tag commit
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Resolve release version
+        id: release
+        run: |
+          BRANCH="${{ github.event.workflow_run.head_branch }}"
+          TAG=""
+          if [[ "$BRANCH" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
+            TAG="$BRANCH"
+          else
+            git fetch --tags --force
+            TAG=$(git tag --points-at HEAD | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+(-.+)?$' | sort -V | tail -1 || true)
+          fi
+          if [[ -z "$TAG" ]]; then
+            echo "Not a semver tag release (head_branch=${BRANCH:-<empty>}); skipping chart publish."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "Resolved release tag: $TAG"
+
+      - name: Install yq
+        if: steps.release.outputs.skip != 'true'
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.44.5/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Set up Helm
+        if: steps.release.outputs.skip != 'true'
+        uses: azure/setup-helm@v4.3.1
+        with:
+          version: v3.17.3
+
+      - name: Log in to GitHub Container Registry
+        if: steps.release.outputs.skip != 'true'
+        uses: docker/login-action@v4.2.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync chart sources
+        if: steps.release.outputs.skip != 'true'
+        run: make copy-crd copy-rbac
+
+      - name: Set chart versions
+        if: steps.release.outputs.skip != 'true'
+        run: make sync-helm-version
+
+      - name: Lint charts
+        if: steps.release.outputs.skip != 'true'
+        run: make helm-lint
+
+      - name: Package charts
+        if: steps.release.outputs.skip != 'true'
+        run: make helm-package
+
+      - name: Push charts to GHCR
+        if: steps.release.outputs.skip != 'true'
+        run: make helm-push

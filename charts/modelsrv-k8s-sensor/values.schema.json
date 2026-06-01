@@ -16,7 +16,10 @@
       "required": ["repository", "tag", "pullPolicy"],
       "properties": {
         "repository": { "type": "string", "minLength": 1 },
-        "tag": { "type": "string" },
+        "tag": {
+          "type": "string",
+          "description": "Image tag; empty string uses Chart.AppVersion"
+        },
         "pullPolicy": {
           "type": "string",
           "enum": ["Always", "Never", "IfNotPresent"]
