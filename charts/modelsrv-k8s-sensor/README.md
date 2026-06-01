@@ -8,14 +8,30 @@ Deploys the EmELand Kubernetes sensor operator: `Deployment`, metrics `Service` 
 - Install CRDs once (recommended separate release):
 
   ```bash
-  helm install modelsrv-k8s-crd ./charts/modelsrv-k8s-crd --namespace emeland-system --create-namespace
+  helm install modelsrv-k8s-crd oci://ghcr.io/emeland-io/charts/modelsrv-k8s-crd \
+    --version 0.2.0 \
+    --namespace emeland-system \
+    --create-namespace
   ```
 
 - Optional: for `gateway.tlsRoute.enabled`, install the Gateway API **experimental** channel CRDs so `TLSRoute` exists.
 
-## Install operator
+## Install operator from GHCR (release)
 
 Install the CRD chart first (see Prerequisites), then deploy the operator:
+
+```bash
+helm install modelsrv-k8s oci://ghcr.io/emeland-io/charts/modelsrv-k8s-sensor \
+  --version 0.2.0 \
+  --namespace emeland-system \
+  --create-namespace
+```
+
+Replace `0.2.0` with the release version you want. The chart defaults to `ghcr.io/emeland-io/modelsrv-k8s-sensor:<Chart.AppVersion>` (no `--set image.tag` required for release installs).
+
+## Install from source
+
+Install the CRD chart first, then deploy the operator:
 
 ```bash
 helm install modelsrv-k8s ./charts/modelsrv-k8s-sensor \
@@ -24,7 +40,7 @@ helm install modelsrv-k8s ./charts/modelsrv-k8s-sensor \
   --set image.tag=<your-tag>
 ```
 
-Default image repository: `registry.gitlab.com/emeland/k8s-model` (see `values.yaml`).
+Default image repository: `ghcr.io/emeland-io/modelsrv-k8s-sensor` (see `values.yaml`). When `image.tag` is empty, the chart uses `Chart.AppVersion`.
 
 ### Optional: TLSRoute
 
@@ -43,4 +59,4 @@ Set `operator.emelandIdentity.enabled=false` to skip creating `System`, `API`, a
 
 ## Upgrading
 
-Bump chart **`version`** in `Chart.yaml` when the chart packaging changes. After **`make manifests`**, Helm **`appVersion`** in both operator and CRD `Chart.yaml` files is rewritten from the Makefile **`VERSION`** (keep that in sync with the image tag you ship). Operator-only chart edits use the same workflow.
+For release installs, upgrade both charts to the same `--version`. After **`make manifests`**, Helm **`version`** and **`appVersion`** in both operator and CRD `Chart.yaml` files are rewritten from the Makefile **`VERSION`**.

@@ -10,6 +10,7 @@ Dockerfile.cross
 # Helm subchart vendoring (CRDs ship as modelsrv-k8s-crd release, not a packaged dep)
 charts/modelsrv-k8s-sensor/charts/*.tgz
 charts/modelsrv-k8s-sensor/Chart.lock
+dist/
 
 # Test binary, built with `go test -c`
 *.test

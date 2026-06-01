@@ -98,8 +98,14 @@ help: ## Display this help.
 CRD_BASE_DIR ?= config/crd/bases
 CRD_CHART_DIR ?= charts/modelsrv-k8s-crd/crds
 
-# Helm Chart.yaml files whose appVersion tracks the operator / project release (VERSION).
+# Helm Chart.yaml files whose version and appVersion track the operator / project release (VERSION).
 HELM_CHART_YAMLS ?= charts/modelsrv-k8s-sensor/Chart.yaml charts/modelsrv-k8s-crd/Chart.yaml
+HELM_CHART_DIRS ?= charts/modelsrv-k8s-crd charts/modelsrv-k8s-sensor
+HELM_DIST_DIR ?= dist
+HELM_OCI_REGISTRY ?= ghcr.io/emeland-io/charts
+HELM ?= helm
+# Strip leading "v" from VERSION for Helm semver fields.
+HELM_VERSION ?= $(patsubst v%,%,$(VERSION))
 
 .PHONY: copy-crd
 copy-crd: ## Copy CRD YAML from config/crd/bases into charts/modelsrv-k8s-crd/crds (single source of truth).
@@ -111,16 +117,34 @@ copy-crd: ## Copy CRD YAML from config/crd/bases into charts/modelsrv-k8s-crd/cr
 copy-rbac: ## Sync ClusterRole rules from generated RBAC into Helm chart (single source of truth).
 	@yq '.rules' config/rbac/role.yaml > charts/modelsrv-k8s-sensor/files/manager-rules.yaml
 
-.PHONY: sync-helm-appversion
-sync-helm-appversion: ## Set appVersion in Helm Chart.yaml files to VERSION (chart "version" bumps are still manual).
+.PHONY: sync-helm-version
+sync-helm-version: ## Set version and appVersion in Helm Chart.yaml files to VERSION (v prefix stripped).
 	@for f in $(HELM_CHART_YAMLS); do \
-		sed "s/^appVersion:.*/appVersion: \"$(VERSION)\"/" $$f > $$f.manifests.tmp && mv $$f.manifests.tmp $$f; \
+		sed -e "s/^version:.*/version: $(HELM_VERSION)/" -e "s/^appVersion:.*/appVersion: \"$(HELM_VERSION)\"/" $$f > $$f.manifests.tmp && mv $$f.manifests.tmp $$f; \
 	done
 
+.PHONY: sync-helm-appversion
+sync-helm-appversion: sync-helm-version ## Deprecated alias for sync-helm-version.
+
+.PHONY: helm-lint
+helm-lint: ## Run helm lint on all charts.
+	@for d in $(HELM_CHART_DIRS); do $(HELM) lint $$d; done
+
+.PHONY: helm-package
+helm-package: sync-helm-version ## Package all charts to dist/.
+	mkdir -p $(HELM_DIST_DIR)
+	@for d in $(HELM_CHART_DIRS); do $(HELM) package $$d -d $(HELM_DIST_DIR); done
+
+.PHONY: helm-push
+helm-push: ## Push packaged charts from dist/ to HELM_OCI_REGISTRY.
+	@shopt -s nullglob; files=($(HELM_DIST_DIR)/*.tgz); \
+	if [ -z "$${files[*]}" ]; then echo "No charts in $(HELM_DIST_DIR); run make helm-package first."; exit 1; fi; \
+	for f in "$${files[@]}"; do $(HELM) push $$f oci://$(HELM_OCI_REGISTRY); done
+
 .PHONY: manifests
-manifests: controller-gen ## Generate CRD/RBAC; copy CRDs into Helm chart; sync Helm appVersion from VERSION.
+manifests: controller-gen ## Generate CRD/RBAC; copy CRDs into Helm chart; sync Helm version from VERSION.
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
-	@$(MAKE) copy-crd copy-rbac sync-helm-appversion
+	@$(MAKE) copy-crd copy-rbac sync-helm-version
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.

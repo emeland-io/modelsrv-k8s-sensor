@@ -4,6 +4,38 @@ This is a set of Kubernetes (K8s) Custom Resource Types to encode the elements o
 
 In addition semantic checks are performed on the K8s resources and findings are also made available through that API.
 
+## Release
+
+Maintainers publish a release by pushing a semver git tag to `main`:
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+CI then publishes:
+
+- Operator image: `ghcr.io/emeland-io/modelsrv-k8s-sensor:0.2.0`
+- CRD chart: `ghcr.io/emeland-io/charts/modelsrv-k8s-crd:0.2.0`
+- Operator chart: `ghcr.io/emeland-io/charts/modelsrv-k8s-sensor:0.2.0`
+
+Chart publish runs after the operator image workflow completes successfully.
+
+### Install (sysadmin)
+
+```bash
+helm install modelsrv-k8s-crd oci://ghcr.io/emeland-io/charts/modelsrv-k8s-crd \
+  --version 0.2.0 \
+  --namespace emeland-system \
+  --create-namespace
+
+helm install modelsrv-k8s oci://ghcr.io/emeland-io/charts/modelsrv-k8s-sensor \
+  --version 0.2.0 \
+  --namespace emeland-system
+```
+
+See [charts/modelsrv-k8s-crd/README.md](charts/modelsrv-k8s-crd/README.md) and [charts/modelsrv-k8s-sensor/README.md](charts/modelsrv-k8s-sensor/README.md) for details.
+
 ## Authors
 
 * [cypherfox](https://gitlab.com/cypherfox)
