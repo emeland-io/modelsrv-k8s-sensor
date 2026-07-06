@@ -20,3 +20,7 @@ spec:
       port: {{ .Values.service.port }}
       targetPort: {{ .Values.service.port }}
       protocol: TCP
+    - name: api
+      port: {{ .Values.service.apiPort }}
+      targetPort: {{ .Values.service.apiPort }}
+      protocol: TCP

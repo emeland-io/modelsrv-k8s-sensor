@@ -45,12 +45,19 @@ spec:
             {{- end }}
             - --health-probe-bind-address={{ .Values.manager.healthProbeBindAddress }}
             - --metrics-bind-address={{ .Values.manager.metricsBindAddress }}
+            - --api-bind-address={{ .Values.manager.apiBindAddress }}
+            {{- if .Values.manager.allowInboundPush }}
+            - --allow-inbound-push
+            {{- end }}
             {{- if not .Values.manager.metricsSecure }}
             - --metrics-secure=false
             {{- end }}
           ports:
             - name: https
               containerPort: {{ .Values.service.port }}
+              protocol: TCP
+            - name: api
+              containerPort: {{ .Values.service.apiPort }}
               protocol: TCP
             - name: probes
               containerPort: {{ .Values.manager.healthProbePort }}

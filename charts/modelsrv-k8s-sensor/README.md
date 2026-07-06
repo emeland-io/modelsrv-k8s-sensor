@@ -1,6 +1,8 @@
 # modelsrv-k8s-sensor
 
-Deploys the EmELand Kubernetes sensor operator: `Deployment`, metrics `Service` (port 8443), RBAC, optional Gateway API `TLSRoute`, and optional `System` / `API` / `Component` CRs describing the operator.
+Deploys the EmELand Kubernetes sensor operator: `Deployment`, metrics `Service` (port 8443), modelsrv REST API (port 8080), RBAC, optional Gateway API `TLSRoute`, and optional `System` / `API` / `Component` CRs describing the operator.
+
+The operator embeds [modelsrv](https://github.com/emeland-io/modelsrv) `v0.9.3-rc3` and serves the REST/OpenAPI API on `manager.apiBindAddress` (default `:8080`, Service port `service.apiPort`).
 
 ## Prerequisites
 

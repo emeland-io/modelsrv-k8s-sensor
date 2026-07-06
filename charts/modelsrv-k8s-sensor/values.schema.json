@@ -68,7 +68,10 @@
         "healthProbeBindAddress",
         "healthProbePort",
         "metricsBindAddress",
-        "metricsSecure"
+        "metricsSecure",
+        "apiBindAddress",
+        "apiPort",
+        "allowInboundPush"
       ],
       "properties": {
         "leaderElect": { "type": "boolean" },
@@ -98,13 +101,28 @@
           ],
           "description": "Metrics listen address (e.g. :8443); use \"0\" or integer 0 to disable"
         },
-        "metricsSecure": { "type": "boolean" }
+        "metricsSecure": { "type": "boolean" },
+        "apiBindAddress": {
+          "type": "string",
+          "minLength": 1,
+          "description": "modelsrv REST/OpenAPI listen address (e.g. :8080)"
+        },
+        "apiPort": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "Container port for the modelsrv API; must match apiBindAddress"
+        },
+        "allowInboundPush": {
+          "type": "boolean",
+          "description": "When true, allow POST /api/events/push (inbound replication)"
+        }
       }
     },
     "service": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "port", "annotations"],
+      "required": ["type", "port", "apiPort", "annotations"],
       "properties": {
         "type": {
           "type": "string",
@@ -114,6 +132,12 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 65535
+        },
+        "apiPort": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "Service port exposing the modelsrv REST API"
         },
         "annotations": {
           "type": "object",
