@@ -10,16 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
-	"go.emeland.io/modelsrv/pkg/backend"
-	"go.emeland.io/modelsrv/pkg/model"
 )
-
-func newTestModel(t *testing.T) model.Model {
-	t.Helper()
-	b, err := backend.New()
-	assert.NoError(t, err)
-	return b.GetModel()
-}
 
 // --- uuidFromMeta ---
 

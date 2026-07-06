@@ -31,14 +31,14 @@ func TestNameIndexConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < 50; i++ {
 		wg.Add(1)
-		go func(n int) {
+		go func() {
 			defer wg.Done()
 			id := uuid.New()
 			name := "ns/res"
 			idx.Put(KindComponent, name, id)
 			_ = idx.Get(KindComponent, name)
 			_ = idx.Delete(KindComponent, name)
-		}(i)
+		}()
 	}
 	wg.Wait()
 }
