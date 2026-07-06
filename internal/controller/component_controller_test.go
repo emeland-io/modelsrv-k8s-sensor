@@ -29,7 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
-	"gitlab.com/emeland/k8s-model/internal/model"
+	"go.emeland.io/modelsrv/pkg/backend"
 )
 
 var _ = Describe("Component Controller", func() {
@@ -37,28 +37,15 @@ var _ = Describe("Component Controller", func() {
 		const resourceName = "test-resource"
 		const displayName = "Test Component"
 		componentId := uuid.New()
-		const availableDate = "2023-01-01"
-		const deprecatedDate = "2024-01-01"
-		const terminatedDate = "2025-01-01"
 		const description = "This is a test Component."
-		version := v1alpha1.Version{
-			Version:        "1.0.0",
-			AvailableFrom:  availableDate,
-			DeprecatedFrom: deprecatedDate,
-			TerminatedFrom: terminatedDate,
-		}
+		version := v1alpha1.Version{Version: "1.0.0"}
 
 		ctx := context.Background()
-
-		typeNamespacedName := types.NamespacedName{
-			Name:      resourceName,
-			Namespace: "default",
-		}
-		component := &v1alpha1.Component{}
+		typeNamespacedName := types.NamespacedName{Name: resourceName, Namespace: "default"}
 
 		BeforeEach(func() {
-			By("creating the custom resource for the Kind Component")
-			err := k8sClient.Get(ctx, typeNamespacedName, component)
+			comp := &v1alpha1.Component{}
+			err := k8sClient.Get(ctx, typeNamespacedName, comp)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &v1alpha1.Component{
 					ObjectMeta: metav1.ObjectMeta{
@@ -74,14 +61,10 @@ var _ = Describe("Component Controller", func() {
 						ComponentId: componentId.String(),
 						Version:     version,
 						Consumes: []v1alpha1.APIRef{
-							{
-								ApiId: "test-consumed-api",
-							},
+							{ApiId: uuid.NewString()},
 						},
 						Provides: []v1alpha1.APIRef{
-							{
-								ApiId: "test-provided-api",
-							},
+							{ApiId: uuid.NewString()},
 						},
 					},
 				}
@@ -90,41 +73,32 @@ var _ = Describe("Component Controller", func() {
 		})
 
 		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
 			resource := &v1alpha1.Component{}
 			_ = k8sClient.Get(ctx, typeNamespacedName, resource)
-
-			By("Cleanup the specific resource instance Component")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
+
 		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
-			model := model.NewModel()
+			b, err := backend.New()
+			Expect(err).NotTo(HaveOccurred())
+			idx := NewNameIndex()
 
 			controllerReconciler := &ComponentReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
-				Model:  model,
+				Model:  b.GetModel(),
+				Index:  idx,
 			}
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
-			})
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
 			Expect(err).NotTo(HaveOccurred())
 
-			comp := model.GetComponentByResourceName("no-such-resource")
-			Expect(comp).To(BeNil())
-
-			comp = model.GetComponentByResourceName(typeNamespacedName.String())
-			Expect(comp).NotTo(BeNil())
-			Expect(comp.DisplayName).To(Equal(displayName))
-			Expect(comp.Description).To(Equal(description))
-			Expect(comp.ComponentId).To(Equal(componentId))
-			Expect(comp.Version).To(Equal(parseVersion(version)))
-			// TODO: add test with system set
-			Expect(comp.System).To(BeNil())
-			Expect(comp.Annotations["structure.emeland.io/system-id"]).To(Equal("test-system-id"))
-
+			got := b.GetModel().GetComponentById(componentId)
+			Expect(got).NotTo(BeNil())
+			Expect(got.GetDisplayName()).To(Equal(displayName))
+			Expect(got.GetDescription()).To(Equal(description))
+			Expect(got.GetComponentId()).To(Equal(componentId))
+			Expect(got.GetAnnotations().GetValue("structure.emeland.io/system-id")).To(Equal("test-system-id"))
 		})
 	})
 })

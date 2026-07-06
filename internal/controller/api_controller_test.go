@@ -29,8 +29,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
-	structurev1alpha1 "gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
-	"gitlab.com/emeland/k8s-model/internal/model"
+	"go.emeland.io/modelsrv/pkg/backend"
+	mdlapi "go.emeland.io/modelsrv/pkg/model/api"
 )
 
 var _ = Describe("API Controller", func() {
@@ -38,31 +38,17 @@ var _ = Describe("API Controller", func() {
 		const resourceName = "test-resource"
 		const displayName = "Test API"
 		apiId := uuid.New()
-		apiType := model.ParseApiType("OpenAPI")
-		const availableDate = "2023-01-01"
-		const deprecatedDate = "2024-01-01"
-		const terminatedDate = "2025-01-01"
 		const description = "This is a test API."
-		version := v1alpha1.Version{
-			Version:        "1.0.0",
-			AvailableFrom:  availableDate,
-			DeprecatedFrom: deprecatedDate,
-			TerminatedFrom: terminatedDate,
-		}
+		version := v1alpha1.Version{Version: "1.0.0"}
 
 		ctx := context.Background()
-
-		typeNamespacedName := types.NamespacedName{
-			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
-		}
-		api := &structurev1alpha1.API{}
+		typeNamespacedName := types.NamespacedName{Name: resourceName, Namespace: "default"}
+		api := &v1alpha1.API{}
 
 		BeforeEach(func() {
-			By("creating the custom resource for the Kind API")
 			err := k8sClient.Get(ctx, typeNamespacedName, api)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &structurev1alpha1.API{
+				resource := &v1alpha1.API{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
@@ -70,12 +56,12 @@ var _ = Describe("API Controller", func() {
 							"structure.emeland.io/system-id": "test-system-id",
 						},
 					},
-					Spec: structurev1alpha1.APISpec{
+					Spec: v1alpha1.APISpec{
 						DisplayName: displayName,
 						Description: description,
 						ApiId:       apiId.String(),
 						Version:     version,
-						Type:        apiType.String(),
+						Type:        "OpenAPI",
 					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
@@ -83,42 +69,33 @@ var _ = Describe("API Controller", func() {
 		})
 
 		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &structurev1alpha1.API{}
+			resource := &v1alpha1.API{}
 			_ = k8sClient.Get(ctx, typeNamespacedName, resource)
-
-			By("Cleanup the specific resource instance API")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
+
 		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
-			model := model.NewModel()
+			b, err := backend.New()
+			Expect(err).NotTo(HaveOccurred())
+			idx := NewNameIndex()
 
 			controllerReconciler := &APIReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
-				Model:  model,
+				Model:  b.GetModel(),
+				Index:  idx,
 			}
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
-			})
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
 			Expect(err).NotTo(HaveOccurred())
 
-			api := model.GetApiByResourceName("no-such-resource")
-			Expect(api).To(BeNil())
-
-			api = model.GetApiByResourceName(typeNamespacedName.String())
-			Expect(api).NotTo(BeNil())
-			Expect(api.DisplayName).To(Equal(displayName))
-			Expect(api.Description).To(Equal(description))
-			Expect(api.ApiId).To(Equal(apiId))
-			Expect(api.Version).To(Equal(parseVersion(version)))
-			Expect(api.Type).To(Equal(apiType))
-			// TODO: add test with system set
-			Expect(api.System).To(BeNil())
-			Expect(api.Annotations["structure.emeland.io/system-id"]).To(Equal("test-system-id"))
-
+			got := b.GetModel().GetApiById(apiId)
+			Expect(got).NotTo(BeNil())
+			Expect(got.GetDisplayName()).To(Equal(displayName))
+			Expect(got.GetDescription()).To(Equal(description))
+			Expect(got.GetApiId()).To(Equal(apiId))
+			Expect(got.GetType()).To(Equal(mdlapi.OpenAPI))
+			Expect(got.GetAnnotations().GetValue("structure.emeland.io/system-id")).To(Equal("test-system-id"))
 		})
 	})
 })

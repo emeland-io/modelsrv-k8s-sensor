@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -28,7 +29,8 @@ import (
 	logr "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
-	"gitlab.com/emeland/k8s-model/internal/model"
+	"go.emeland.io/modelsrv/pkg/model"
+	"go.emeland.io/modelsrv/pkg/model/common"
 )
 
 // SystemInstanceReconciler reconciles a SystemInstance object
@@ -36,6 +38,7 @@ type SystemInstanceReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Model  model.Model
+	Index  *NameIndex
 }
 
 // +kubebuilder:rbac:groups=structure.emeland.io,resources=systeminstances,verbs=get;list;watch;create;update;patch;delete
@@ -49,15 +52,25 @@ func (r *SystemInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	err := r.Get(ctx, req.NamespacedName, systemInstance)
 
 	if err == nil {
-		err = r.Model.AddSystemInstance(convertSystemInstance(systemInstance), req.NamespacedName.String(), r.Client.Status())
-		if err != nil {
+		obj, id := convertSystemInstance(systemInstance)
+		if obj == nil {
+			log.Error(nil, "skipping SystemInstance with no resolvable UUID", "name", req.NamespacedName)
+			return ctrl.Result{}, nil
+		}
+		if err = r.Model.AddSystemInstance(obj); err != nil {
 			log.Error(err, "could not add systemInstance to model")
 			return ctrl.Result{}, err
 		}
+		r.Index.Put(KindSystemInstance, req.NamespacedName.String(), id)
 	} else if k8serrors.IsNotFound(err) {
-		err = r.Model.DeleteSystemInstanceByResourceName(req.NamespacedName.String())
-		if errors.Is(err, model.ErrSystemInstanceNotFound) {
-			err = nil // ignore a resource that is not even in the model
+		id := r.Index.Delete(KindSystemInstance, req.NamespacedName.String())
+		if id == uuid.Nil {
+			log.Error(nil, "SystemInstance deleted but no UUID in index", "name", req.NamespacedName)
+			return ctrl.Result{}, nil
+		}
+		err = r.Model.DeleteSystemInstanceById(id)
+		if errors.Is(err, common.ErrSystemInstanceNotFound) {
+			err = nil
 		}
 	} else {
 		log.Error(err, fmt.Sprintf("could not get SystemInstance %s", req.NamespacedName))
@@ -72,13 +85,4 @@ func (r *SystemInstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.SystemInstance{}).
 		Complete(r)
-}
-
-func convertSystemInstance(sysInst *v1alpha1.SystemInstance) *model.SystemInstance {
-	return &model.SystemInstance{
-		DisplayName: sysInst.Spec.DisplayName,
-		InstanceId:  parseOptionalUUID(sysInst.Spec.InstanceId),
-		SystemRef:   parseSystemRef(sysInst.Spec.SystemId, nil),
-		Annotations: copyAnnotations(sysInst.Annotations),
-	}
 }

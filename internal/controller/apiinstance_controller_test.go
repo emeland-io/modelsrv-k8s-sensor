@@ -28,7 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"gitlab.com/emeland/k8s-model/internal/model"
+	"go.emeland.io/modelsrv/pkg/backend"
 )
 
 var _ = Describe("APIInstanceReconciler", func() {
@@ -51,18 +51,19 @@ var _ = Describe("APIInstanceReconciler", func() {
 			},
 		}
 
+		b, err := backend.New()
+		Expect(err).NotTo(HaveOccurred())
 		fakeClient := newFakeClient(svc)
-		m := model.NewModel()
 
-		r := NewAPIInstanceReconciler(fakeClient, testScheme, m, &corev1.Service{}, "Service")
-		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+		r := NewAPIInstanceReconciler(fakeClient, testScheme, b.GetModel(), NewNameIndex(), &corev1.Service{}, "Service")
+		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
 		Expect(err).NotTo(HaveOccurred())
 
-		ai := m.GetApiInstanceByResourceName(nn.String())
+		ai := b.GetModel().GetApiInstanceById(uid)
 		Expect(ai).NotTo(BeNil())
-		Expect(ai.DisplayName).To(Equal("my-svc"))
-		Expect(ai.InstanceId).To(Equal(uid))
-		Expect(ai.ApiRef.ApiID).To(Equal(apiID))
+		Expect(ai.GetDisplayName()).To(Equal("my-svc"))
+		Expect(ai.GetInstanceId()).To(Equal(uid))
+		Expect(ai.GetApiRef().ApiID).To(Equal(apiID))
 	})
 
 	It("should create an APIInstance from an Ingress", func() {
@@ -76,31 +77,36 @@ var _ = Describe("APIInstanceReconciler", func() {
 			},
 		}
 
+		b, err := backend.New()
+		Expect(err).NotTo(HaveOccurred())
 		fakeClient := newFakeClient(ing)
-		m := model.NewModel()
 
-		r := NewAPIInstanceReconciler(fakeClient, testScheme, m, &networkingv1.Ingress{}, "Ingress")
-		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: ingNN})
+		r := NewAPIInstanceReconciler(fakeClient, testScheme, b.GetModel(), NewNameIndex(), &networkingv1.Ingress{}, "Ingress")
+		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: ingNN})
 		Expect(err).NotTo(HaveOccurred())
 
-		ai := m.GetApiInstanceByResourceName(ingNN.String())
+		ai := b.GetModel().GetApiInstanceById(uid)
 		Expect(ai).NotTo(BeNil())
-		Expect(ai.InstanceId).To(Equal(uid))
+		Expect(ai.GetInstanceId()).To(Equal(uid))
 	})
 
 	It("should delete an APIInstance when the resource is gone", func() {
-		m := model.NewModel()
+		uid := uuid.New()
+		b, err := backend.New()
+		Expect(err).NotTo(HaveOccurred())
+		idx := NewNameIndex()
 
-		Expect(m.AddApiInstance(&model.APIInstance{
-			DisplayName: "my-svc",
-			InstanceId:  uuid.New(),
-		}, nn.String(), nil)).To(Succeed())
+		ai, id := apiInstanceFromMeta(&corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{Name: nn.Name, Namespace: nn.Namespace, UID: types.UID(uid.String())},
+		})
+		Expect(b.GetModel().AddApiInstance(ai)).To(Succeed())
+		idx.Put(KindAPIInstance, nn.String(), id)
 
 		fakeClient := newFakeClient()
-		r := NewAPIInstanceReconciler(fakeClient, testScheme, m, &corev1.Service{}, "Service")
-		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+		r := NewAPIInstanceReconciler(fakeClient, testScheme, b.GetModel(), idx, &corev1.Service{}, "Service")
+		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
 		Expect(err).NotTo(HaveOccurred())
 
-		Expect(m.GetApiInstanceByResourceName(nn.String())).To(BeNil())
+		Expect(b.GetModel().GetApiInstanceById(uid)).To(BeNil())
 	})
 })

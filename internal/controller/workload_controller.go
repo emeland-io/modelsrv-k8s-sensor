@@ -21,13 +21,15 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logr "sigs.k8s.io/controller-runtime/pkg/log"
 
-	"gitlab.com/emeland/k8s-model/internal/model"
+	"go.emeland.io/modelsrv/pkg/model"
+	"go.emeland.io/modelsrv/pkg/model/common"
 )
 
 // WorkloadReconciler maps native K8s workload resources to ComponentInstance.
@@ -39,21 +41,20 @@ type WorkloadReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Model  model.Model
+	Index  *NameIndex
 
-	// prototype is a zero-value object used for Get() and For() (e.g. &appsv1.Deployment{}).
 	prototype client.Object
-	// kind is the human-readable resource kind for log messages.
-	kind string
-	// skipFunc optionally filters out resources that should not be tracked.
-	skipFunc func(client.Object) bool
+	kind      string
+	skipFunc  func(client.Object) bool
 }
 
 // NewWorkloadReconciler creates a reconciler for the given workload type.
-func NewWorkloadReconciler(c client.Client, scheme *runtime.Scheme, m model.Model, prototype client.Object, kind string, skipFunc func(client.Object) bool) *WorkloadReconciler {
+func NewWorkloadReconciler(c client.Client, scheme *runtime.Scheme, m model.Model, idx *NameIndex, prototype client.Object, kind string, skipFunc func(client.Object) bool) *WorkloadReconciler {
 	return &WorkloadReconciler{
 		Client:    c,
 		Scheme:    scheme,
 		Model:     m,
+		Index:     idx,
 		prototype: prototype,
 		kind:      kind,
 		skipFunc:  skipFunc,
@@ -70,17 +71,23 @@ func (r *WorkloadReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if r.skipFunc != nil && r.skipFunc(obj) {
 			return ctrl.Result{}, nil
 		}
-		ci := componentInstanceFromMeta(obj)
+		ci, id := componentInstanceFromMeta(obj)
 		if ci == nil {
+			log.Error(nil, "skipping workload with no resolvable UUID", "kind", r.kind, "name", req.NamespacedName)
 			return ctrl.Result{}, nil
 		}
-		if err := r.Model.AddComponentInstance(ci, req.NamespacedName.String(), nil); err != nil {
+		if err := r.Model.AddComponentInstance(ci); err != nil {
 			log.Error(err, "could not add component instance to model", "kind", r.kind)
 			return ctrl.Result{}, err
 		}
+		r.Index.Put(KindComponentInstance, req.NamespacedName.String(), id)
 	} else if k8serrors.IsNotFound(err) {
-		err = r.Model.DeleteComponentInstanceByResourceName(req.NamespacedName.String())
-		if errors.Is(err, model.ErrComponentInstanceNotFound) {
+		id := r.Index.Delete(KindComponentInstance, req.NamespacedName.String())
+		if id == uuid.Nil {
+			return ctrl.Result{}, nil
+		}
+		err = r.Model.DeleteComponentInstanceById(id)
+		if errors.Is(err, common.ErrComponentInstanceNotFound) {
 			err = nil
 		}
 	} else {

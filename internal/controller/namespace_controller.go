@@ -31,7 +31,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logr "sigs.k8s.io/controller-runtime/pkg/log"
 
-	"gitlab.com/emeland/k8s-model/internal/model"
+	"go.emeland.io/modelsrv/pkg/model"
+	"go.emeland.io/modelsrv/pkg/model/common"
 )
 
 // NamespaceReconciler reconciles Namespace objects into EmELand Context entities.
@@ -41,6 +42,7 @@ type NamespaceReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Model  model.Model
+	Index  *NameIndex
 
 	mu               sync.RWMutex
 	clusterContextID uuid.UUID
@@ -70,9 +72,12 @@ func (r *NamespaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			if req.Name == "kube-system" {
 				r.setClusterContextID(uuid.Nil)
 			}
-			err = r.Model.DeleteContextByResourceName(req.Name)
-			if errors.Is(err, model.ErrContextNotFound) {
-				err = nil
+			id := r.Index.Delete(KindContext, req.Name)
+			if id != uuid.Nil {
+				err = r.Model.DeleteContextById(id)
+				if errors.Is(err, common.ErrContextNotFound) {
+					err = nil
+				}
 			}
 			return ctrl.Result{}, err
 		}
@@ -82,24 +87,25 @@ func (r *NamespaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	clusterID := r.getClusterContextID()
 
-	// If the root context is not yet known and this is not kube-system, re-queue.
 	if ns.Name != "kube-system" && clusterID == uuid.Nil {
 		return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
 	}
 
-	emCtx := convertNamespaceToContext(ns, clusterID)
+	emCtx, id := convertNamespaceToContext(ns, clusterID)
 	if emCtx == nil {
+		log.Error(nil, "skipping Namespace with no resolvable UUID", "name", req.Name)
 		return ctrl.Result{}, nil
 	}
 
 	if ns.Name == "kube-system" {
-		r.setClusterContextID(emCtx.ContextId)
+		r.setClusterContextID(id)
 	}
 
-	if err := r.Model.AddContext(emCtx, req.Name); err != nil {
+	if err := r.Model.AddContext(emCtx); err != nil {
 		log.Error(err, "could not add context to model")
 		return ctrl.Result{}, err
 	}
+	r.Index.Put(KindContext, req.Name, id)
 
 	return ctrl.Result{}, nil
 }
@@ -109,25 +115,4 @@ func (r *NamespaceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.Namespace{}).
 		Complete(r)
-}
-
-func convertNamespaceToContext(ns *corev1.Namespace, clusterContextID uuid.UUID) *model.Context {
-	uid := uuidFromMeta(ns.ObjectMeta)
-	if uid == uuid.Nil {
-		return nil
-	}
-
-	emCtx := &model.Context{
-		DisplayName: ns.Name,
-		ContextId:   uid,
-		Description: fmt.Sprintf("Kubernetes namespace %s", ns.Name),
-		Annotations: copyAnnotations(ns.Annotations),
-	}
-
-	// kube-system is the root cluster context; all others are children.
-	if ns.Name != "kube-system" && clusterContextID != uuid.Nil {
-		emCtx.ParentId = clusterContextID
-	}
-
-	return emCtx
 }

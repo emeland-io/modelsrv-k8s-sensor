@@ -27,7 +27,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"gitlab.com/emeland/k8s-model/internal/model"
+	"go.emeland.io/modelsrv/pkg/backend"
+	mdlctx "go.emeland.io/modelsrv/pkg/model/context"
 )
 
 var _ = Describe("NamespaceReconciler", func() {
@@ -41,18 +42,20 @@ var _ = Describe("NamespaceReconciler", func() {
 			},
 		}
 
+		b, err := backend.New()
+		Expect(err).NotTo(HaveOccurred())
+		idx := NewNameIndex()
 		fakeClient := newFakeClient(ksNS)
-		m := model.NewModel()
 
-		r := &NamespaceReconciler{Client: fakeClient, Scheme: testScheme, Model: m}
-		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: "kube-system"}})
+		r := &NamespaceReconciler{Client: fakeClient, Scheme: testScheme, Model: b.GetModel(), Index: idx}
+		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: "kube-system"}})
 		Expect(err).NotTo(HaveOccurred())
 
-		emCtx := m.GetContextByResourceName("kube-system")
+		emCtx := b.GetModel().GetContextById(ksUID)
 		Expect(emCtx).NotTo(BeNil())
-		Expect(emCtx.ContextId).To(Equal(ksUID))
-		Expect(emCtx.DisplayName).To(Equal("kube-system"))
-		Expect(emCtx.ParentId).To(Equal(uuid.Nil)) // root has no parent
+		Expect(emCtx.GetContextId()).To(Equal(ksUID))
+		Expect(emCtx.GetDisplayName()).To(Equal("kube-system"))
+		Expect(emCtx.GetParentId()).To(Equal(uuid.Nil))
 		Expect(r.getClusterContextID()).To(Equal(ksUID))
 	})
 
@@ -61,77 +64,72 @@ var _ = Describe("NamespaceReconciler", func() {
 		ksUID := uuid.New()
 		nsUID := uuid.New()
 		ksNS := &corev1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "kube-system",
-				UID:  types.UID(ksUID.String()),
-			},
+			ObjectMeta: metav1.ObjectMeta{Name: "kube-system", UID: types.UID(ksUID.String())},
 		}
 		ns := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: "my-app",
-				UID:  types.UID(nsUID.String()),
-				Annotations: map[string]string{
-					"team": "platform",
-				},
+				Name:        "my-app",
+				UID:         types.UID(nsUID.String()),
+				Annotations: map[string]string{"team": "platform"},
 			},
 		}
 
+		b, err := backend.New()
+		Expect(err).NotTo(HaveOccurred())
+		idx := NewNameIndex()
 		fakeClient := newFakeClient(ksNS, ns)
-		m := model.NewModel()
 
-		r := &NamespaceReconciler{Client: fakeClient, Scheme: testScheme, Model: m}
+		r := &NamespaceReconciler{Client: fakeClient, Scheme: testScheme, Model: b.GetModel(), Index: idx}
 
-		// Reconcile kube-system first to set the root context.
-		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: "kube-system"}})
+		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: "kube-system"}})
 		Expect(err).NotTo(HaveOccurred())
 
-		// Now reconcile the regular namespace.
 		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: "my-app"}})
 		Expect(err).NotTo(HaveOccurred())
 
-		emCtx := m.GetContextByResourceName("my-app")
+		emCtx := b.GetModel().GetContextById(nsUID)
 		Expect(emCtx).NotTo(BeNil())
-		Expect(emCtx.ContextId).To(Equal(nsUID))
-		Expect(emCtx.ParentId).To(Equal(ksUID))
-		Expect(emCtx.Annotations["team"]).To(Equal("platform"))
+		Expect(emCtx.GetContextId()).To(Equal(nsUID))
+		Expect(emCtx.GetParentId()).To(Equal(ksUID))
+		Expect(emCtx.GetAnnotations().GetValue("team")).To(Equal("platform"))
 	})
 
 	It("should re-queue a regular namespace when kube-system is not yet seen", func() {
 		ctx := context.Background()
 		nsUID := uuid.New()
 		ns := &corev1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "my-app",
-				UID:  types.UID(nsUID.String()),
-			},
+			ObjectMeta: metav1.ObjectMeta{Name: "my-app", UID: types.UID(nsUID.String())},
 		}
 
+		b, err := backend.New()
+		Expect(err).NotTo(HaveOccurred())
 		fakeClient := newFakeClient(ns)
-		m := model.NewModel()
 
-		r := &NamespaceReconciler{Client: fakeClient, Scheme: testScheme, Model: m}
+		r := &NamespaceReconciler{Client: fakeClient, Scheme: testScheme, Model: b.GetModel(), Index: NewNameIndex()}
 		result, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: "my-app"}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.RequeueAfter).To(BeNumerically(">", 0))
 
-		// Not added to model yet.
-		Expect(m.GetContextByResourceName("my-app")).To(BeNil())
+		Expect(b.GetModel().GetContextById(nsUID)).To(BeNil())
 	})
 
 	It("should delete a context when namespace is removed", func() {
 		ctx := context.Background()
-		m := model.NewModel()
+		id := uuid.New()
+		b, err := backend.New()
+		Expect(err).NotTo(HaveOccurred())
+		idx := NewNameIndex()
 
-		Expect(m.AddContext(&model.Context{
-			DisplayName: "old-ns",
-			ContextId:   uuid.New(),
-		}, "old-ns")).To(Succeed())
+		emCtx := mdlctx.NewContext(id)
+		emCtx.SetDisplayName("old-ns")
+		Expect(b.GetModel().AddContext(emCtx)).To(Succeed())
+		idx.Put(KindContext, "old-ns", id)
 
-		fakeClient := newFakeClient() // namespace gone
-		r := &NamespaceReconciler{Client: fakeClient, Scheme: testScheme, Model: m}
-		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: "old-ns"}})
+		fakeClient := newFakeClient()
+		r := &NamespaceReconciler{Client: fakeClient, Scheme: testScheme, Model: b.GetModel(), Index: idx}
+		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: "old-ns"}})
 		Expect(err).NotTo(HaveOccurred())
 
-		Expect(m.GetContextByResourceName("old-ns")).To(BeNil())
+		Expect(b.GetModel().GetContextById(id)).To(BeNil())
 	})
 })

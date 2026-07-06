@@ -10,7 +10,16 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
+	"go.emeland.io/modelsrv/pkg/backend"
+	"go.emeland.io/modelsrv/pkg/model"
 )
+
+func newTestModel(t *testing.T) model.Model {
+	t.Helper()
+	b, err := backend.New()
+	assert.NoError(t, err)
+	return b.GetModel()
+}
 
 // --- uuidFromMeta ---
 
@@ -29,22 +38,17 @@ func TestUuidFromMeta_Invalid(t *testing.T) {
 	assert.Equal(t, uuid.Nil, uuidFromMeta(meta))
 }
 
-// --- copyAnnotations ---
-
-func TestCopyAnnotations(t *testing.T) {
-	src := map[string]string{"a": "1", "b": "2"}
-	copied := copyAnnotations(src)
-	assert.Equal(t, map[string]string{"a": "1", "b": "2"}, copied)
-
-	// Verify it's a copy, not a reference
-	copied["c"] = "3"
-	assert.Empty(t, src["c"])
+func TestResourceID_PrefersSpec(t *testing.T) {
+	specID := uuid.New()
+	metaID := uuid.New()
+	meta := metav1.ObjectMeta{UID: types.UID(metaID.String())}
+	assert.Equal(t, specID, resourceID(specID.String(), meta))
 }
 
-func TestCopyAnnotations_Nil(t *testing.T) {
-	copied := copyAnnotations(nil)
-	assert.NotNil(t, copied)
-	assert.Empty(t, copied)
+func TestResourceID_FallsBackToMeta(t *testing.T) {
+	metaID := uuid.New()
+	meta := metav1.ObjectMeta{UID: types.UID(metaID.String())}
+	assert.Equal(t, metaID, resourceID("", meta))
 }
 
 // --- annotationUUID ---
@@ -127,18 +131,20 @@ func TestComponentInstanceFromMeta(t *testing.T) {
 		},
 	}
 
-	ci := componentInstanceFromMeta(svc)
+	ci, gotID := componentInstanceFromMeta(svc)
 	assert.NotNil(t, ci)
-	assert.Equal(t, "my-deploy", ci.DisplayName)
-	assert.Equal(t, id, ci.InstanceId)
-	assert.Equal(t, siID, ci.SystemInstance.InstanceId)
-	assert.Equal(t, "value", ci.Annotations["custom"])
-	assert.Equal(t, siID.String(), ci.Annotations[AnnotationSystemInstanceID])
+	assert.Equal(t, id, gotID)
+	assert.Equal(t, "my-deploy", ci.GetDisplayName())
+	assert.Equal(t, id, ci.GetInstanceId())
+	assert.Equal(t, siID, ci.GetSystemInstance().InstanceId)
+	assert.Equal(t, "value", ci.GetAnnotations().GetValue("custom"))
 }
 
 func TestComponentInstanceFromMeta_NoUID(t *testing.T) {
 	svc := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "no-uid"}}
-	assert.Nil(t, componentInstanceFromMeta(svc))
+	ci, id := componentInstanceFromMeta(svc)
+	assert.Nil(t, ci)
+	assert.Equal(t, uuid.Nil, id)
 }
 
 func TestComponentInstanceFromMeta_NoSystemInstance(t *testing.T) {
@@ -150,9 +156,10 @@ func TestComponentInstanceFromMeta_NoSystemInstance(t *testing.T) {
 		},
 	}
 
-	ci := componentInstanceFromMeta(svc)
+	ci, gotID := componentInstanceFromMeta(svc)
 	assert.NotNil(t, ci)
-	assert.Nil(t, ci.SystemInstance)
+	assert.Equal(t, id, gotID)
+	assert.Nil(t, ci.GetSystemInstance())
 }
 
 // --- apiInstanceFromMeta ---
@@ -172,17 +179,20 @@ func TestApiInstanceFromMeta(t *testing.T) {
 		},
 	}
 
-	ai := apiInstanceFromMeta(svc)
+	ai, gotID := apiInstanceFromMeta(svc)
 	assert.NotNil(t, ai)
-	assert.Equal(t, "my-svc", ai.DisplayName)
-	assert.Equal(t, id, ai.InstanceId)
-	assert.Equal(t, apiID, ai.ApiRef.ApiID)
-	assert.Equal(t, siID, ai.SystemInstance.InstanceId)
+	assert.Equal(t, id, gotID)
+	assert.Equal(t, "my-svc", ai.GetDisplayName())
+	assert.Equal(t, id, ai.GetInstanceId())
+	assert.Equal(t, apiID, ai.GetApiRef().ApiID)
+	assert.Equal(t, siID, ai.GetSystemInstance().InstanceId)
 }
 
 func TestApiInstanceFromMeta_NoUID(t *testing.T) {
 	svc := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "no-uid"}}
-	assert.Nil(t, apiInstanceFromMeta(svc))
+	ai, id := apiInstanceFromMeta(svc)
+	assert.Nil(t, ai)
+	assert.Equal(t, uuid.Nil, id)
 }
 
 func TestApiInstanceFromMeta_NoAnnotations(t *testing.T) {
@@ -194,10 +204,72 @@ func TestApiInstanceFromMeta_NoAnnotations(t *testing.T) {
 		},
 	}
 
-	ai := apiInstanceFromMeta(svc)
+	ai, gotID := apiInstanceFromMeta(svc)
 	assert.NotNil(t, ai)
-	assert.Equal(t, uuid.Nil, ai.ApiRef.ApiID)
-	assert.Nil(t, ai.SystemInstance)
+	assert.Equal(t, id, gotID)
+	assert.Nil(t, ai.GetApiRef())
+	assert.Nil(t, ai.GetSystemInstance())
+}
+
+// --- convertSystem ---
+
+func TestConvertSystem_IncludesAbstract(t *testing.T) {
+	sysID := uuid.New()
+	sys := &v1alpha1.System{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "abstract-sys",
+			Namespace: "default",
+			UID:       types.UID(uuid.New().String()),
+		},
+		Spec: v1alpha1.SystemSpec{
+			DisplayName: "Abstract System",
+			SystemId:    sysID.String(),
+			Abstract:    true,
+			Version:     v1alpha1.Version{Version: "2.0"},
+		},
+	}
+
+	obj, id := convertSystem(sys)
+	assert.NotNil(t, obj)
+	assert.Equal(t, sysID, id)
+	assert.True(t, obj.GetAbstract())
+}
+
+func TestConvertSystem_NoUUID(t *testing.T) {
+	sys := &v1alpha1.System{
+		ObjectMeta: metav1.ObjectMeta{Name: "no-id", Namespace: "default"},
+		Spec:       v1alpha1.SystemSpec{DisplayName: "x"},
+	}
+	obj, id := convertSystem(sys)
+	assert.Nil(t, obj)
+	assert.Equal(t, uuid.Nil, id)
+}
+
+// --- convertComponent ---
+
+func TestConvertComponent_ConsumesProvides(t *testing.T) {
+	compID := uuid.New()
+	apiID := uuid.New()
+	comp := &v1alpha1.Component{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "comp",
+			Namespace: "default",
+			UID:       types.UID(uuid.New().String()),
+		},
+		Spec: v1alpha1.ComponentSpec{
+			DisplayName: "Comp",
+			ComponentId: compID.String(),
+			Version:     v1alpha1.Version{Version: "1.0"},
+			Consumes:    []v1alpha1.APIRef{{ApiId: apiID.String()}},
+			Provides:    []v1alpha1.APIRef{{ApiId: apiID.String()}},
+		},
+	}
+
+	obj, id := convertComponent(comp)
+	assert.NotNil(t, obj)
+	assert.Equal(t, compID, id)
+	assert.Len(t, obj.GetConsumes(), 1)
+	assert.Len(t, obj.GetProvides(), 1)
 }
 
 // --- parseVersion ---
@@ -238,17 +310,14 @@ func TestParseSystemRef_ById(t *testing.T) {
 }
 
 func TestParseSystemRef_ByVersionRef(t *testing.T) {
-	ref := parseSystemRef("", &v1alpha1.VersionRef{Name: "sys", Version: "1.0"})
-	assert.NotNil(t, ref)
-	assert.Equal(t, "sys", ref.SystemRef.Name)
-	assert.Equal(t, "1.0", ref.SystemRef.Version)
+	// modelsrv SystemRef is UUID-only; name/version refs are not representable.
+	assert.Nil(t, parseSystemRef("", &v1alpha1.VersionRef{Name: "sys", Version: "1.0"}))
 }
 
 func TestParseSystemRef_IdTakesPrecedence(t *testing.T) {
 	id := uuid.New()
 	ref := parseSystemRef(id.String(), &v1alpha1.VersionRef{Name: "sys", Version: "1.0"})
 	assert.Equal(t, id, ref.SystemId)
-	assert.Nil(t, ref.SystemRef)
 }
 
 func TestParseSystemRef_NeitherSet(t *testing.T) {
