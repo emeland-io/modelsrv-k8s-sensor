@@ -34,9 +34,6 @@ import (
 
 // APIInstanceReconciler maps native K8s resources to APIInstance.
 // It handles Service and Ingress.
-//
-// +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch
-// +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch
 type APIInstanceReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -58,6 +55,9 @@ func NewAPIInstanceReconciler(c client.Client, scheme *runtime.Scheme, m model.M
 		kind:      kind,
 	}
 }
+
+// +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch
 
 func (r *APIInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logr.FromContext(ctx)
