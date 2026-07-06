@@ -114,8 +114,8 @@ copy-crd: ## Copy CRD YAML from config/crd/bases into charts/modelsrv-k8s-crd/cr
 	cp $(CRD_BASE_DIR)/structure.emeland.io_*.yaml $(CRD_CHART_DIR)/
 
 .PHONY: copy-rbac
-copy-rbac: ## Sync ClusterRole rules from generated RBAC into Helm chart (single source of truth).
-	@yq '.rules' config/rbac/role.yaml > charts/modelsrv-k8s-sensor/files/manager-rules.yaml
+copy-rbac: yq ## Sync ClusterRole rules from generated RBAC into Helm chart (single source of truth).
+	@$(YQ) '.rules' config/rbac/role.yaml > charts/modelsrv-k8s-sensor/files/manager-rules.yaml
 
 .PHONY: sync-helm-version
 sync-helm-version: ## Set version and appVersion in Helm Chart.yaml files to VERSION (v prefix stripped).
@@ -259,12 +259,14 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
+YQ ?= $(LOCALBIN)/yq
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.4.3
 CONTROLLER_GEN_VERSION ?= v0.17.2
 ENVTEST_VERSION ?= release-0.19
 GOLANGCI_LINT_VERSION ?= v2.12.2
+YQ_VERSION ?= v4.44.5
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -285,6 +287,11 @@ $(ENVTEST): $(LOCALBIN)
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
 	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
+
+.PHONY: yq
+yq: $(YQ) ## Download yq locally if necessary.
+$(YQ): $(LOCALBIN)
+	$(call go-install-tool,$(YQ),github.com/mikefarah/yq/v4,$(YQ_VERSION))
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary
