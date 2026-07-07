@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -28,7 +29,8 @@ import (
 	logr "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
-	"gitlab.com/emeland/k8s-model/internal/model"
+	"go.emeland.io/modelsrv/pkg/model"
+	"go.emeland.io/modelsrv/pkg/model/common"
 )
 
 // APIReconciler reconciles a API object
@@ -36,6 +38,7 @@ type APIReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Model  model.Model
+	Index  *NameIndex
 }
 
 // +kubebuilder:rbac:groups=structure.emeland.io,resources=apis,verbs=get;list;watch;create;update;patch;delete
@@ -49,15 +52,25 @@ func (r *APIReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	err := r.Get(ctx, req.NamespacedName, api)
 
 	if err == nil {
-		err = r.Model.AddApi(convertAPI(api), req.NamespacedName.String(), r.Client.Status())
-		if err != nil {
+		obj, id := convertAPI(api)
+		if obj == nil {
+			log.Error(nil, "skipping API with no resolvable UUID", "name", req.NamespacedName)
+			return ctrl.Result{}, nil
+		}
+		if err = r.Model.AddApi(obj); err != nil {
 			log.Error(err, "could not add api to model")
 			return ctrl.Result{}, err
 		}
+		r.Index.Put(KindAPI, req.NamespacedName.String(), id)
 	} else if k8serrors.IsNotFound(err) {
-		err = r.Model.DeleteApiByResourceName(req.NamespacedName.String())
-		if errors.Is(err, model.ErrApiNotFound) {
-			err = nil // ignore a resource that is not even in the model
+		id := r.Index.Delete(KindAPI, req.NamespacedName.String())
+		if id == uuid.Nil {
+			log.Error(nil, "API deleted but no UUID in index", "name", req.NamespacedName)
+			return ctrl.Result{}, nil
+		}
+		err = r.Model.DeleteApiById(id)
+		if errors.Is(err, common.ErrApiNotFound) {
+			err = nil
 		}
 	} else {
 		log.Error(err, fmt.Sprintf("could not get API %s", req.NamespacedName))
@@ -72,16 +85,4 @@ func (r *APIReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.API{}).
 		Complete(r)
-}
-
-func convertAPI(api *v1alpha1.API) *model.API {
-	return &model.API{
-		DisplayName: api.Spec.DisplayName,
-		Description: api.Spec.Description,
-		ApiId:       parseOptionalUUID(api.Spec.ApiId),
-		Version:     parseVersion(api.Spec.Version),
-		Type:        model.ParseApiType(api.Spec.Type),
-		System:      parseSystemRef(api.Spec.SystemId, &api.Spec.SystemRef),
-		Annotations: copyAnnotations(api.Annotations),
-	}
 }

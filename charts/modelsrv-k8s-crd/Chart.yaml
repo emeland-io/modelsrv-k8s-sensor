@@ -2,6 +2,6 @@ apiVersion: v2
 name: modelsrv-k8s-crd
 description: Custom resource definitions for EmELand structure resources (structure.emeland.io)
 type: application
-version: 0.1.0
+version: 0.0.1
 # version/appVersion are rewritten from Makefile VERSION (release tag) via sync-helm-version.
 appVersion: "0.0.1"

@@ -29,8 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
-	structurev1alpha1 "gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
-	"gitlab.com/emeland/k8s-model/internal/model"
+	"go.emeland.io/modelsrv/pkg/backend"
 )
 
 var _ = Describe("System Controller", func() {
@@ -53,17 +52,15 @@ var _ = Describe("System Controller", func() {
 
 		typeNamespacedName := types.NamespacedName{
 			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
+			Namespace: "default",
 		}
-		system := &structurev1alpha1.System{}
+		system := &v1alpha1.System{}
 
 		BeforeEach(func() {
-
 			By("creating the custom resource for the Kind System")
 			err := k8sClient.Get(ctx, typeNamespacedName, system)
 			if err != nil && errors.IsNotFound(err) {
-
-				resource := &structurev1alpha1.System{
+				resource := &v1alpha1.System{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
@@ -71,7 +68,7 @@ var _ = Describe("System Controller", func() {
 							"structure.emeland.io/system-id": "test-system-id",
 						},
 					},
-					Spec: structurev1alpha1.SystemSpec{
+					Spec: v1alpha1.SystemSpec{
 						DisplayName: displayName,
 						Description: description,
 						SystemId:    systemId.String(),
@@ -83,39 +80,34 @@ var _ = Describe("System Controller", func() {
 		})
 
 		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &structurev1alpha1.System{}
+			resource := &v1alpha1.System{}
 			_ = k8sClient.Get(ctx, typeNamespacedName, resource)
-
 			By("Cleanup the specific resource instance System")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
 		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
-			model := model.NewModel()
+			b, err := backend.New()
+			Expect(err).NotTo(HaveOccurred())
+			idx := NewNameIndex()
 
-			By("Reconciling the created resource")
 			controllerReconciler := &SystemReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
-				Model:  model,
+				Model:  b.GetModel(),
+				Index:  idx,
 			}
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			system := model.GetSystemByResourceName("no-such-resource")
-			Expect(system).To(BeNil())
-			system = model.GetSystemByResourceName(typeNamespacedName.String())
-			Expect(system).NotTo(BeNil())
-			Expect(system.DisplayName).To(Equal(displayName))
-			Expect(system.Description).To(Equal(description))
-			Expect(system.SystemId).To(Equal(systemId))
-			Expect(system.Version).To(Equal(parseVersion(version)))
-			Expect(system.Annotations["structure.emeland.io/system-id"]).To(Equal("test-system-id"))
-
+			sys := b.GetModel().GetSystemById(systemId)
+			Expect(sys).NotTo(BeNil())
+			Expect(sys.GetDisplayName()).To(Equal(displayName))
+			Expect(sys.GetDescription()).To(Equal(description))
+			Expect(sys.GetSystemId()).To(Equal(systemId))
+			Expect(sys.GetAnnotations().GetValue("structure.emeland.io/system-id")).To(Equal("test-system-id"))
 		})
 	})
 })

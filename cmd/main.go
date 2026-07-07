@@ -17,9 +17,14 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
+	"fmt"
+	"net"
+	"net/http"
 	"os"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -40,9 +45,12 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	"go.emeland.io/modelsrv/pkg/backend"
+	"go.emeland.io/modelsrv/pkg/endpoint"
+
 	structurev1alpha1 "gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
 	"gitlab.com/emeland/k8s-model/internal/controller"
-	"gitlab.com/emeland/k8s-model/internal/model"
+	"gitlab.com/emeland/k8s-model/internal/sensor"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -61,13 +69,17 @@ func init() {
 
 func main() {
 	var metricsAddr string
+	var apiAddr string
 	var enableLeaderElection bool
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var allowInboundPush bool
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
+	flag.StringVar(&apiAddr, "api-bind-address", envOrDefault("API_ADDR", ":8080"),
+		"The address the modelsrv REST API binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
@@ -76,6 +88,8 @@ func main() {
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.BoolVar(&allowInboundPush, "allow-inbound-push", false,
+		"If set, allow POST /api/events/push (inbound replication). Default false: sensor is replication source only.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -84,12 +98,6 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	// if the enable-http2 flag is false (the default), http/2 should be disabled
-	// due to its vulnerabilities. More specifically, disabling http/2 will
-	// prevent from being vulnerable to the HTTP/2 Stream Cancellation and
-	// Rapid Reset CVEs. For more information see:
-	// - https://github.com/advisories/GHSA-qppj-fm5r-hxr3
-	// - https://github.com/advisories/GHSA-4374-p667-p6c8
 	disableHTTP2 := func(c *tls.Config) {
 		setupLog.Info("disabling http/2")
 		c.NextProtos = []string{"http/1.1"}
@@ -103,10 +111,6 @@ func main() {
 		TLSOpts: tlsOpts,
 	})
 
-	// Metrics endpoint is enabled in 'config/default/kustomization.yaml'. The Metrics options configure the server.
-	// More info:
-	// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/metrics/server
-	// - https://book.kubebuilder.io/reference/metrics.html
 	metricsServerOptions := metricsserver.Options{
 		BindAddress:   metricsAddr,
 		SecureServing: secureMetrics,
@@ -114,10 +118,6 @@ func main() {
 	}
 
 	if secureMetrics {
-		// FilterProvider is used to protect the metrics endpoint with authn/authz.
-		// These configurations ensure that only authorized users and service accounts
-		// can access the metrics endpoint. The RBAC are configured in 'config/rbac/kustomization.yaml'. More info:
-		// https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/metrics/filters#WithAuthenticationAndAuthorization
 		metricsServerOptions.FilterProvider = filters.WithAuthenticationAndAuthorization
 	}
 
@@ -128,37 +128,32 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "64445a55.emeland.io",
-		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
-		// when the Manager ends. This requires the binary to immediately end when the
-		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
-		// speeds up voluntary leader transitions as the new leader don't have to wait
-		// LeaseDuration time first.
-		//
-		// In the default scaffold provided, the program ends immediately after
-		// the manager stops, so would be fine to enable this option. However,
-		// if you are doing or is intended to do any operation such as perform cleanups
-		// after the manager stops then its usage might be unsafe.
-		// LeaderElectionReleaseOnCancel: true,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
 
-	emModel := model.NewModel()
+	b, err := backend.New()
+	if err != nil {
+		setupLog.Error(err, "unable to create modelsrv backend")
+		os.Exit(1)
+	}
+
+	emModel := b.GetModel()
+	nameIndex := controller.NewNameIndex()
 
 	c := mgr.GetClient()
 	s := mgr.GetScheme()
 
-	// CRD controllers (each has custom conversion logic)
 	crdControllers := []struct {
 		name string
 		r    interface{ SetupWithManager(ctrl.Manager) error }
 	}{
-		{"System", &controller.SystemReconciler{Client: c, Scheme: s, Model: emModel}},
-		{"API", &controller.APIReconciler{Client: c, Scheme: s, Model: emModel}},
-		{"Component", &controller.ComponentReconciler{Client: c, Scheme: s, Model: emModel}},
-		{"SystemInstance", &controller.SystemInstanceReconciler{Client: c, Scheme: s, Model: emModel}},
+		{"System", &controller.SystemReconciler{Client: c, Scheme: s, Model: emModel, Index: nameIndex}},
+		{"API", &controller.APIReconciler{Client: c, Scheme: s, Model: emModel, Index: nameIndex}},
+		{"Component", &controller.ComponentReconciler{Client: c, Scheme: s, Model: emModel, Index: nameIndex}},
+		{"SystemInstance", &controller.SystemInstanceReconciler{Client: c, Scheme: s, Model: emModel, Index: nameIndex}},
 	}
 	for _, cc := range crdControllers {
 		if err = cc.r.SetupWithManager(mgr); err != nil {
@@ -167,7 +162,6 @@ func main() {
 		}
 	}
 
-	// Workload controllers → ComponentInstance
 	workloads := []struct {
 		kind      string
 		prototype client.Object
@@ -180,14 +174,13 @@ func main() {
 		{"Job", &batchv1.Job{}, controller.IsOwnedByCronJob},
 	}
 	for _, w := range workloads {
-		r := controller.NewWorkloadReconciler(c, s, emModel, w.prototype, w.kind, w.skipFunc)
+		r := controller.NewWorkloadReconciler(c, s, emModel, nameIndex, w.prototype, w.kind, w.skipFunc)
 		if err = r.SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", w.kind)
 			os.Exit(1)
 		}
 	}
 
-	// API-exposing controllers → APIInstance
 	apiResources := []struct {
 		kind      string
 		prototype client.Object
@@ -196,18 +189,18 @@ func main() {
 		{"Ingress", &networkingv1.Ingress{}},
 	}
 	for _, a := range apiResources {
-		r := controller.NewAPIInstanceReconciler(c, s, emModel, a.prototype, a.kind)
+		r := controller.NewAPIInstanceReconciler(c, s, emModel, nameIndex, a.prototype, a.kind)
 		if err = r.SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", a.kind)
 			os.Exit(1)
 		}
 	}
 
-	// Namespace → Context
 	if err = (&controller.NamespaceReconciler{
 		Client: c,
 		Scheme: s,
 		Model:  emModel,
+		Index:  nameIndex,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Namespace")
 		os.Exit(1)
@@ -223,9 +216,53 @@ func main() {
 		os.Exit(1)
 	}
 
+	apiServer, apiListenAddr, err := startAPIServer(b, apiAddr, allowInboundPush)
+	if err != nil {
+		setupLog.Error(err, "unable to start modelsrv API")
+		os.Exit(1)
+	}
+	setupLog.Info("modelsrv API listening", "address", apiListenAddr)
+
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := apiServer.Shutdown(shutdownCtx); err != nil {
+		setupLog.Error(err, "problem shutting down modelsrv API")
+	}
+}
+
+func startAPIServer(b backend.Backend, addr string, allowInboundPush bool) (*http.Server, string, error) {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, "", fmt.Errorf("listen %s: %w", addr, err)
+	}
+
+	baseURL := fmt.Sprintf("http://%s/api", ln.Addr().String())
+	handler := endpoint.NewHandler(b.GetModel(), b.GetEventManager(), baseURL, endpoint.WebListenerOptions{})
+	wrapped := sensor.ReplicationGuard{
+		Handler:          handler,
+		AllowInboundPush: allowInboundPush,
+	}
+
+	srv := &http.Server{Handler: wrapped}
+	go func() {
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+			setupLog.Error(err, "modelsrv API server error")
+			os.Exit(1)
+		}
+	}()
+
+	return srv, ln.Addr().String(), nil
+}
+
+func envOrDefault(key, fallback string) string {
+	if v, ok := os.LookupEnv(key); ok {
+		return v
+	}
+	return fallback
 }

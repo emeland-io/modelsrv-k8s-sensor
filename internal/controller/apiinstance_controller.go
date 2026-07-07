@@ -21,39 +21,43 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logr "sigs.k8s.io/controller-runtime/pkg/log"
 
-	"gitlab.com/emeland/k8s-model/internal/model"
+	"go.emeland.io/modelsrv/pkg/model"
+	"go.emeland.io/modelsrv/pkg/model/common"
 )
 
 // APIInstanceReconciler maps native K8s resources to APIInstance.
 // It handles Service and Ingress.
-//
-// +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch
-// +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch
 type APIInstanceReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Model  model.Model
+	Index  *NameIndex
 
 	prototype client.Object
 	kind      string
 }
 
 // NewAPIInstanceReconciler creates a reconciler for the given API-exposing resource type.
-func NewAPIInstanceReconciler(c client.Client, scheme *runtime.Scheme, m model.Model, prototype client.Object, kind string) *APIInstanceReconciler {
+func NewAPIInstanceReconciler(c client.Client, scheme *runtime.Scheme, m model.Model, idx *NameIndex, prototype client.Object, kind string) *APIInstanceReconciler {
 	return &APIInstanceReconciler{
 		Client:    c,
 		Scheme:    scheme,
 		Model:     m,
+		Index:     idx,
 		prototype: prototype,
 		kind:      kind,
 	}
 }
+
+// +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch
 
 func (r *APIInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logr.FromContext(ctx)
@@ -62,17 +66,23 @@ func (r *APIInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	err := r.Get(ctx, req.NamespacedName, obj)
 
 	if err == nil {
-		ai := apiInstanceFromMeta(obj)
+		ai, id := apiInstanceFromMeta(obj)
 		if ai == nil {
+			log.Error(nil, "skipping API instance with no resolvable UUID", "kind", r.kind, "name", req.NamespacedName)
 			return ctrl.Result{}, nil
 		}
-		if err := r.Model.AddApiInstance(ai, req.NamespacedName.String(), nil); err != nil {
+		if err := r.Model.AddApiInstance(ai); err != nil {
 			log.Error(err, "could not add api instance to model", "kind", r.kind)
 			return ctrl.Result{}, err
 		}
+		r.Index.Put(KindAPIInstance, req.NamespacedName.String(), id)
 	} else if k8serrors.IsNotFound(err) {
-		err = r.Model.DeleteApiInstanceByResourceName(req.NamespacedName.String())
-		if errors.Is(err, model.ErrApiInstanceNotFound) {
+		id := r.Index.Delete(KindAPIInstance, req.NamespacedName.String())
+		if id == uuid.Nil {
+			return ctrl.Result{}, nil
+		}
+		err = r.Model.DeleteApiInstanceById(id)
+		if errors.Is(err, common.ErrApiInstanceNotFound) {
 			err = nil
 		}
 	} else {

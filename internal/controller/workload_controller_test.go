@@ -28,7 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"gitlab.com/emeland/k8s-model/internal/model"
+	"go.emeland.io/modelsrv/pkg/backend"
 )
 
 var _ = Describe("WorkloadReconciler", func() {
@@ -55,37 +55,41 @@ var _ = Describe("WorkloadReconciler", func() {
 			},
 		}
 
+		b, err := backend.New()
+		Expect(err).NotTo(HaveOccurred())
+		idx := NewNameIndex()
 		fakeClient := newFakeClient(dep)
-		m := model.NewModel()
 
-		r := NewWorkloadReconciler(fakeClient, testScheme, m, &appsv1.Deployment{}, "Deployment", nil)
-		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+		r := NewWorkloadReconciler(fakeClient, testScheme, b.GetModel(), idx, &appsv1.Deployment{}, "Deployment", nil)
+		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
 		Expect(err).NotTo(HaveOccurred())
 
-		ci := m.GetComponentInstanceByResourceName(nn.String())
+		ci := b.GetModel().GetComponentInstanceById(uid)
 		Expect(ci).NotTo(BeNil())
-		Expect(ci.DisplayName).To(Equal("my-deploy"))
-		Expect(ci.InstanceId).To(Equal(uid))
-		Expect(ci.SystemInstance.InstanceId).To(Equal(siID))
-		Expect(ci.Annotations["app"]).To(Equal("test"))
+		Expect(ci.GetDisplayName()).To(Equal("my-deploy"))
+		Expect(ci.GetInstanceId()).To(Equal(uid))
+		Expect(ci.GetSystemInstance().InstanceId).To(Equal(siID))
+		Expect(ci.GetAnnotations().GetValue("app")).To(Equal("test"))
 	})
 
 	It("should delete a ComponentInstance when the resource is gone", func() {
-		m := model.NewModel()
+		uid := uuid.New()
+		b, err := backend.New()
+		Expect(err).NotTo(HaveOccurred())
+		idx := NewNameIndex()
 
-		// Pre-populate model
-		Expect(m.AddComponentInstance(&model.ComponentInstance{
-			DisplayName: "my-deploy",
-			InstanceId:  uuid.New(),
-		}, nn.String(), nil)).To(Succeed())
-		Expect(m.GetComponentInstanceByResourceName(nn.String())).NotTo(BeNil())
+		ci, id := componentInstanceFromMeta(&appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{Name: nn.Name, Namespace: nn.Namespace, UID: types.UID(uid.String())},
+		})
+		Expect(b.GetModel().AddComponentInstance(ci)).To(Succeed())
+		idx.Put(KindComponentInstance, nn.String(), id)
 
-		fakeClient := newFakeClient() // resource doesn't exist
-		r := NewWorkloadReconciler(fakeClient, testScheme, m, &appsv1.Deployment{}, "Deployment", nil)
-		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+		fakeClient := newFakeClient()
+		r := NewWorkloadReconciler(fakeClient, testScheme, b.GetModel(), idx, &appsv1.Deployment{}, "Deployment", nil)
+		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
 		Expect(err).NotTo(HaveOccurred())
 
-		Expect(m.GetComponentInstanceByResourceName(nn.String())).To(BeNil())
+		Expect(b.GetModel().GetComponentInstanceById(uid)).To(BeNil())
 	})
 
 	It("should skip Jobs owned by a CronJob", func() {
@@ -101,15 +105,16 @@ var _ = Describe("WorkloadReconciler", func() {
 			},
 		}
 
+		b, err := backend.New()
+		Expect(err).NotTo(HaveOccurred())
 		fakeClient := newFakeClient(job)
-		m := model.NewModel()
 
 		jobNN := types.NamespacedName{Name: "cron-job-12345", Namespace: "default"}
-		r := NewWorkloadReconciler(fakeClient, testScheme, m, &batchv1.Job{}, "Job", IsOwnedByCronJob)
-		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: jobNN})
+		r := NewWorkloadReconciler(fakeClient, testScheme, b.GetModel(), NewNameIndex(), &batchv1.Job{}, "Job", IsOwnedByCronJob)
+		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: jobNN})
 		Expect(err).NotTo(HaveOccurred())
 
-		Expect(m.GetComponentInstanceByResourceName(jobNN.String())).To(BeNil())
+		Expect(b.GetModel().GetComponentInstanceById(uid)).To(BeNil())
 	})
 
 	It("should track standalone Jobs", func() {
@@ -122,16 +127,17 @@ var _ = Describe("WorkloadReconciler", func() {
 			},
 		}
 
+		b, err := backend.New()
+		Expect(err).NotTo(HaveOccurred())
 		fakeClient := newFakeClient(job)
-		m := model.NewModel()
 
 		jobNN := types.NamespacedName{Name: "standalone-job", Namespace: "default"}
-		r := NewWorkloadReconciler(fakeClient, testScheme, m, &batchv1.Job{}, "Job", IsOwnedByCronJob)
-		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: jobNN})
+		r := NewWorkloadReconciler(fakeClient, testScheme, b.GetModel(), NewNameIndex(), &batchv1.Job{}, "Job", IsOwnedByCronJob)
+		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: jobNN})
 		Expect(err).NotTo(HaveOccurred())
 
-		ci := m.GetComponentInstanceByResourceName(jobNN.String())
+		ci := b.GetModel().GetComponentInstanceById(uid)
 		Expect(ci).NotTo(BeNil())
-		Expect(ci.InstanceId).To(Equal(uid))
+		Expect(ci.GetInstanceId()).To(Equal(uid))
 	})
 })

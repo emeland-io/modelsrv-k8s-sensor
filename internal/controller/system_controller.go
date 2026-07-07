@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -28,7 +29,8 @@ import (
 	logr "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
-	"gitlab.com/emeland/k8s-model/internal/model"
+	"go.emeland.io/modelsrv/pkg/model"
+	"go.emeland.io/modelsrv/pkg/model/common"
 )
 
 // SystemReconciler reconciles a System object
@@ -36,6 +38,7 @@ type SystemReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Model  model.Model
+	Index  *NameIndex
 }
 
 // +kubebuilder:rbac:groups=structure.emeland.io,resources=systems,verbs=get;list;watch;create;update;patch;delete
@@ -49,15 +52,25 @@ func (r *SystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	err := r.Get(ctx, req.NamespacedName, sys)
 
 	if err == nil {
-		err = r.Model.AddSystem(convertSystem(sys), req.NamespacedName.String(), r.Client.Status())
-		if err != nil {
+		obj, id := convertSystem(sys)
+		if obj == nil {
+			log.Error(nil, "skipping System with no resolvable UUID", "name", req.NamespacedName)
+			return ctrl.Result{}, nil
+		}
+		if err = r.Model.AddSystem(obj); err != nil {
 			log.Error(err, "could not add system to model")
 			return ctrl.Result{}, err
 		}
+		r.Index.Put(KindSystem, req.NamespacedName.String(), id)
 	} else if k8serrors.IsNotFound(err) {
-		err = r.Model.DeleteSystemByResourceName(req.NamespacedName.String())
-		if errors.Is(err, model.ErrSystemNotFound) {
-			err = nil // ignore a resource that is not even in the model
+		id := r.Index.Delete(KindSystem, req.NamespacedName.String())
+		if id == uuid.Nil {
+			log.Error(nil, "System deleted but no UUID in index", "name", req.NamespacedName)
+			return ctrl.Result{}, nil
+		}
+		err = r.Model.DeleteSystemById(id)
+		if errors.Is(err, common.ErrSystemNotFound) {
+			err = nil
 		}
 	} else {
 		log.Error(err, fmt.Sprintf("could not get System %s", req.NamespacedName))
@@ -65,7 +78,6 @@ func (r *SystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	return ctrl.Result{}, err
-
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -73,14 +85,4 @@ func (r *SystemReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.System{}).
 		Complete(r)
-}
-
-func convertSystem(sys *v1alpha1.System) *model.System {
-	return &model.System{
-		DisplayName: sys.Spec.DisplayName,
-		Description: sys.Spec.Description,
-		SystemId:    parseOptionalUUID(sys.Spec.SystemId),
-		Version:     parseVersion(sys.Spec.Version),
-		Annotations: copyAnnotations(sys.Annotations),
-	}
 }

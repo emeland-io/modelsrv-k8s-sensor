@@ -27,10 +27,16 @@ manager:
   metricsBindAddress: ":8443"
   # When false, metrics served over HTTP (not recommended off-cluster).
   metricsSecure: true
+  # modelsrv REST/OpenAPI API (separate from controller metrics).
+  apiBindAddress: ":8080"
+  apiPort: 8080
+  # Reject inbound POST /api/events/push (sensor is replication source only).
+  allowInboundPush: false
 
 service:
   type: ClusterIP
   port: 8443
+  apiPort: 8080
   annotations: {}
 
 resources:

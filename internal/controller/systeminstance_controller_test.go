@@ -23,12 +23,13 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
-	"gitlab.com/emeland/k8s-model/internal/model"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"go.emeland.io/modelsrv/pkg/backend"
 )
 
 var _ = Describe("SystemInstance Controller", func() {
@@ -40,40 +41,27 @@ var _ = Describe("SystemInstance Controller", func() {
 		systemId := uuid.New()
 
 		ctx := context.Background()
-
-		systemNsName := types.NamespacedName{
-			Name:      systemName,
-			Namespace: "default",
-		}
-		typeNamespacedName := types.NamespacedName{
-			Name:      resourceName,
-			Namespace: "default",
-		}
-		system := &v1alpha1.System{}
-		systeminstance := &v1alpha1.SystemInstance{}
+		systemNsName := types.NamespacedName{Name: systemName, Namespace: "default"}
+		typeNamespacedName := types.NamespacedName{Name: resourceName, Namespace: "default"}
 
 		BeforeEach(func() {
-			By("creating the custom resource for the Kind SystemInstance")
+			system := &v1alpha1.System{}
 			err := k8sClient.Get(ctx, systemNsName, system)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &v1alpha1.System{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      systemName,
-						Namespace: "default",
-						Annotations: map[string]string{
-							"structure.emeland.io/system-id": systemId.String(),
-						}},
+				Expect(k8sClient.Create(ctx, &v1alpha1.System{
+					ObjectMeta: metav1.ObjectMeta{Name: systemName, Namespace: "default"},
 					Spec: v1alpha1.SystemSpec{
 						SystemId:    systemId.String(),
 						DisplayName: "Test System",
+						Version:     v1alpha1.Version{Version: "1.0"},
 					},
-				}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+				})).To(Succeed())
 			}
 
+			systeminstance := &v1alpha1.SystemInstance{}
 			err = k8sClient.Get(ctx, typeNamespacedName, systeminstance)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &v1alpha1.SystemInstance{
+				Expect(k8sClient.Create(ctx, &v1alpha1.SystemInstance{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
@@ -86,43 +74,38 @@ var _ = Describe("SystemInstance Controller", func() {
 						SystemId:    systemId.String(),
 						DisplayName: displayName,
 					},
-				}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+				})).To(Succeed())
 			}
 		})
 
 		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
 			resource := &v1alpha1.SystemInstance{}
 			_ = k8sClient.Get(ctx, typeNamespacedName, resource)
-
-			By("Cleanup the specific resource instance SystemInstance")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
+
 		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
-			model := model.NewModel()
+			b, err := backend.New()
+			Expect(err).NotTo(HaveOccurred())
+			idx := NewNameIndex()
 
 			controllerReconciler := &SystemInstanceReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
-				Model:  model,
+				Model:  b.GetModel(),
+				Index:  idx,
 			}
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
-			})
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
 			Expect(err).NotTo(HaveOccurred())
-			sysInstance := model.GetSystemInstanceByResourceName("no-such-resource")
-			Expect(sysInstance).To(BeNil())
 
-			sysInstance = model.GetSystemInstanceByResourceName(typeNamespacedName.String())
-			Expect(sysInstance).NotTo(BeNil())
-			Expect(sysInstance.DisplayName).To(Equal(displayName))
-			Expect(sysInstance.InstanceId).To(Equal(instanceId))
-			Expect(sysInstance.SystemRef).ToNot(BeNil())
-			Expect(sysInstance.SystemRef.SystemId).To(Equal(systemId))
-			Expect(sysInstance.Annotations["structure.emeland.io/system-id"]).To(Equal("test-system-id"))
+			got := b.GetModel().GetSystemInstanceById(instanceId)
+			Expect(got).NotTo(BeNil())
+			Expect(got.GetDisplayName()).To(Equal(displayName))
+			Expect(got.GetInstanceId()).To(Equal(instanceId))
+			Expect(got.GetSystemRef()).NotTo(BeNil())
+			Expect(got.GetSystemRef().SystemId).To(Equal(systemId))
+			Expect(got.GetAnnotations().GetValue("structure.emeland.io/system-id")).To(Equal("test-system-id"))
 		})
 	})
 })

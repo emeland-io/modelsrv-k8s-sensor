@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -28,7 +29,8 @@ import (
 	logr "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
-	"gitlab.com/emeland/k8s-model/internal/model"
+	"go.emeland.io/modelsrv/pkg/model"
+	"go.emeland.io/modelsrv/pkg/model/common"
 )
 
 // ComponentReconciler reconciles a Component object
@@ -36,6 +38,7 @@ type ComponentReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Model  model.Model
+	Index  *NameIndex
 }
 
 // +kubebuilder:rbac:groups=structure.emeland.io,resources=components,verbs=get;list;watch;create;update;patch;delete
@@ -49,15 +52,25 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	err := r.Get(ctx, req.NamespacedName, comp)
 
 	if err == nil {
-		err = r.Model.AddComponent(convertComponent(comp), req.NamespacedName.String(), r.Client.Status())
-		if err != nil {
+		obj, id := convertComponent(comp)
+		if obj == nil {
+			log.Error(nil, "skipping Component with no resolvable UUID", "name", req.NamespacedName)
+			return ctrl.Result{}, nil
+		}
+		if err = r.Model.AddComponent(obj); err != nil {
 			log.Error(err, "could not add component to model")
 			return ctrl.Result{}, err
 		}
+		r.Index.Put(KindComponent, req.NamespacedName.String(), id)
 	} else if k8serrors.IsNotFound(err) {
-		err = r.Model.DeleteComponentByResourceName(req.NamespacedName.String())
-		if errors.Is(err, model.ErrComponentNotFound) {
-			err = nil // ignore a resource that is not even in the model
+		id := r.Index.Delete(KindComponent, req.NamespacedName.String())
+		if id == uuid.Nil {
+			log.Error(nil, "Component deleted but no UUID in index", "name", req.NamespacedName)
+			return ctrl.Result{}, nil
+		}
+		err = r.Model.DeleteComponentById(id)
+		if errors.Is(err, common.ErrComponentNotFound) {
+			err = nil
 		}
 	} else {
 		log.Error(err, fmt.Sprintf("could not get Component %s", req.NamespacedName))
@@ -72,15 +85,4 @@ func (r *ComponentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Component{}).
 		Complete(r)
-}
-
-func convertComponent(comp *v1alpha1.Component) *model.Component {
-	return &model.Component{
-		DisplayName: comp.Spec.DisplayName,
-		Description: comp.Spec.Description,
-		ComponentId: parseOptionalUUID(comp.Spec.ComponentId),
-		Version:     parseVersion(comp.Spec.Version),
-		System:      parseSystemRef(comp.Spec.SystemId, &comp.Spec.SystemRef),
-		Annotations: copyAnnotations(comp.Annotations),
-	}
 }

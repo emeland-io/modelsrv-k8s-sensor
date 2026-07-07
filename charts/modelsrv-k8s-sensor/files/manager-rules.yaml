@@ -1,4 +1,13 @@
 - apiGroups:
+    - ""
+  resources:
+    - namespaces
+    - services
+  verbs:
+    - get
+    - list
+    - watch
+- apiGroups:
     - apps
   resources:
     - daemonsets
@@ -13,22 +22,6 @@
   resources:
     - cronjobs
     - jobs
-  verbs:
-    - get
-    - list
-    - watch
-- apiGroups:
-    - ""
-  resources:
-    - services
-  verbs:
-    - get
-    - list
-    - watch
-- apiGroups:
-    - ""
-  resources:
-    - namespaces
   verbs:
     - get
     - list
