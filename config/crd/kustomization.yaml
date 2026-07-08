@@ -6,6 +6,7 @@ resources:
 - bases/structure.emeland.io_apis.yaml
 - bases/structure.emeland.io_components.yaml
 - bases/structure.emeland.io_systeminstances.yaml
+- bases/structure.emeland.io_findingrules.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

@@ -5,4 +5,5 @@ resources:
 - structure_v1alpha1_component.yaml
 - structure_v1_systeminstance.yaml
 - structure_v1alpha1_systeminstance.yaml
+- structure_v1alpha1_findingrule.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

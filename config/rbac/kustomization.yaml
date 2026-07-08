@@ -30,4 +30,6 @@ resources:
 - api_viewer_role.yaml
 - system_editor_role.yaml
 - system_viewer_role.yaml
+- findingrule_editor_role.yaml
+- findingrule_viewer_role.yaml
 
