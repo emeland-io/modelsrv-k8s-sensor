@@ -1,0 +1,123 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.2
+  name: findingrules.structure.emeland.io
+spec:
+  group: structure.emeland.io
+  names:
+    kind: FindingRule
+    listKind: FindingRuleList
+    plural: findingrules
+    singular: findingrule
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: FindingRule is the Schema for the findingrules API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: FindingRuleSpec defines the desired state of FindingRule
+            properties:
+              condition:
+                description: |-
+                  Condition is a CEL expression evaluated against each target resource.
+                  When the expression evaluates to true, a finding is raised.
+                  See https://kubernetes.io/docs/reference/using-api/cel/
+                type: string
+              finding:
+                description: Finding describes the alert to emit when the condition
+                  matches.
+                properties:
+                  description:
+                    description: Description is the message shown when the finding
+                      is raised.
+                    type: string
+                  displayName:
+                    description: DisplayName is the human-friendly name of the finding.
+                    type: string
+                  severity:
+                    description: Severity is the severity level of the finding.
+                    enum:
+                    - low
+                    - middle
+                    - high
+                    type: string
+                  type:
+                    description: Type classifies the finding.
+                    properties:
+                      description:
+                        description: Description is an optional longer description
+                          of the finding type.
+                        type: string
+                      displayName:
+                        description: DisplayName is the human-friendly name of the
+                          finding type.
+                        type: string
+                      uuid:
+                        description: UUID is the unique identifier of the finding
+                          type.
+                        type: string
+                    required:
+                    - displayName
+                    - uuid
+                    type: object
+                required:
+                - description
+                - displayName
+                - severity
+                - type
+                type: object
+              target:
+                description: Target selects the Kubernetes resources this rule applies
+                  to.
+                properties:
+                  apiGroups:
+                    description: APIGroups is the list of API groups to match (e.g.
+                      "" for core).
+                    items:
+                      type: string
+                    type: array
+                  resources:
+                    description: Resources is the list of resource names to match
+                      (e.g. "namespaces").
+                    items:
+                      type: string
+                    type: array
+                required:
+                - apiGroups
+                - resources
+                type: object
+            required:
+            - condition
+            - finding
+            - target
+            type: object
+          status:
+            description: FindingRuleStatus defines the observed state of FindingRule
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

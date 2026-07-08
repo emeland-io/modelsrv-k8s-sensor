@@ -77,4 +77,13 @@ resources:
   kind: CronJob
   path: k8s.io/api/batch/v1
   version: v1
+- api:
+    crdVersion: v1
+    namespaced: false
+  controller: false
+  domain: emeland.io
+  group: structure
+  kind: FindingRule
+  path: gitlab.com/emeland/k8s-model/api/k8s/v1alpha1
+  version: v1alpha1
 version: "3"

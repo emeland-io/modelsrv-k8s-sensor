@@ -1,0 +1,20 @@
+apiVersion: structure.emeland.io/v1alpha1
+kind: FindingRule
+metadata:
+  name: namespace-requires-platform-owner
+spec:
+  target:
+    apiGroups: [""]
+    resources: ["namespaces"]
+  condition: >-
+    !has(object.metadata.annotations) ||
+    !has(object.metadata.annotations['owner']) ||
+    object.metadata.annotations['owner'] != 'platform'
+  finding:
+    severity: "high"
+    displayName: "MissingOwnerForNamespace"
+    description: "Namespace is missing the required 'owner: platform' annotation."
+    type:
+      uuid: "uuid"
+      displayName: "NamespaceOwnerValidation"
+      description: "Alerts if a Namespace is not explicitly owned by the platform team"
