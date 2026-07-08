@@ -46,7 +46,7 @@ type Target struct {
 // Finding describes the alert emitted when a rule's condition matches.
 type Finding struct {
 	// Severity is the severity level of the finding.
-	// +kubebuilder:validation:Enum=low;middle;high
+	// +kubebuilder:validation:Enum=low;medium;high
 	Severity string `json:"severity"`
 
 	// DisplayName is the human-friendly name of the finding.

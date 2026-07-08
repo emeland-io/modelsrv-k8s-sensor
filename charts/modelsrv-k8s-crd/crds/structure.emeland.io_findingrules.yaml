@@ -60,7 +60,7 @@ spec:
                     description: Severity is the severity level of the finding.
                     enum:
                     - low
-                    - middle
+                    - medium
                     - high
                     type: string
                   type:
