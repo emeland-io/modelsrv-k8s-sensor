@@ -142,6 +142,7 @@ func main() {
 
 	emModel := b.GetModel()
 	nameIndex := controller.NewNameIndex()
+	ruleRepo := controller.NewRuleRepo()
 
 	c := mgr.GetClient()
 	s := mgr.GetScheme()
@@ -203,6 +204,11 @@ func main() {
 		Index:  nameIndex,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Namespace")
+		os.Exit(1)
+	}
+
+	if err = controller.NewFindingRuleWatcher(mgr, ruleRepo); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "FindingRule")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
