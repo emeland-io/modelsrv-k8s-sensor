@@ -72,6 +72,7 @@
         "apiBindAddress",
         "apiPort",
         "allowInboundPush",
+        "helmReleaseScanning",
         "subscriberUrls"
       ],
       "properties": {
@@ -117,6 +118,10 @@
         "allowInboundPush": {
           "type": "boolean",
           "description": "When true, allow POST /api/events/push (inbound replication)"
+        },
+        "helmReleaseScanning": {
+          "type": "boolean",
+          "description": "When true, scan Helm v3/v4 release Secrets to create SystemInstances"
         },
         "subscriberUrls": {
           "type": "array",

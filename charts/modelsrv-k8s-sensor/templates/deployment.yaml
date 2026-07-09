@@ -49,6 +49,9 @@ spec:
             {{- if .Values.manager.allowInboundPush }}
             - --allow-inbound-push
             {{- end }}
+            {{- if not .Values.manager.helmReleaseScanning }}
+            - --helm-release-scanning=false
+            {{- end }}
             {{- if .Values.manager.subscriberUrls }}
             - --subscriber-urls={{ join "," .Values.manager.subscriberUrls }}
             {{- end }}
