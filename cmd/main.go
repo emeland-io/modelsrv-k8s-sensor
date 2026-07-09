@@ -75,6 +75,7 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var allowInboundPush bool
+	var subscriberURLs string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -90,6 +91,9 @@ func main() {
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.BoolVar(&allowInboundPush, "allow-inbound-push", false,
 		"If set, allow POST /api/events/push (inbound replication). Default false: sensor is replication source only.")
+	flag.StringVar(&subscriberURLs, "subscriber-urls", envOrDefault("SUBSCRIBER_URLS", ""),
+		"Comma-separated downstream modelsrv base API URLs to register as replication subscribers "+
+			"(e.g. http://host:8080/api).")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -137,6 +141,11 @@ func main() {
 	b, err := backend.New()
 	if err != nil {
 		setupLog.Error(err, "unable to create modelsrv backend")
+		os.Exit(1)
+	}
+
+	if err := registerSubscribers(b.GetEventManager(), parseCommaSeparatedList(subscriberURLs)); err != nil {
+		setupLog.Error(err, "unable to register replication subscribers")
 		os.Exit(1)
 	}
 

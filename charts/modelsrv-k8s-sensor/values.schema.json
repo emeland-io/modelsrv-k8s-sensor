@@ -71,7 +71,8 @@
         "metricsSecure",
         "apiBindAddress",
         "apiPort",
-        "allowInboundPush"
+        "allowInboundPush",
+        "subscriberUrls"
       ],
       "properties": {
         "leaderElect": { "type": "boolean" },
@@ -116,6 +117,14 @@
         "allowInboundPush": {
           "type": "boolean",
           "description": "When true, allow POST /api/events/push (inbound replication)"
+        },
+        "subscriberUrls": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Downstream modelsrv base API URLs registered at startup (e.g. http://host:8080/api)"
         }
       }
     },
