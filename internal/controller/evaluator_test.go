@@ -21,12 +21,12 @@ func testModel(t *testing.T) model.Model {
 	return m
 }
 
-func compileTestRule(t *testing.T, name, condition string, findingMeta structurev1alpha1.Finding) CompiledRule {
+func compileTestRule(t *testing.T, condition string, findingMeta structurev1alpha1.Finding) CompiledRule {
 	t.Helper()
 	program, err := compileCondition(condition)
 	require.NoError(t, err)
 	return CompiledRule{
-		Name:    name,
+		Name:    "test-rule",
 		Program: program,
 		Finding: findingMeta,
 	}
@@ -56,7 +56,7 @@ func sampleUnstructuredObject() *unstructured.Unstructured {
 func TestEvaluateRuleConditionTrue(t *testing.T) {
 	m := testModel(t)
 	eval := NewEvaluator(m)
-	rule := compileTestRule(t, "test-rule", "true", sampleFindingMeta())
+	rule := compileTestRule(t, "true", sampleFindingMeta())
 	obj := sampleUnstructuredObject()
 
 	err := eval.EvaluateRule(rule, obj)
@@ -82,7 +82,7 @@ func TestEvaluateRuleConditionTrue(t *testing.T) {
 func TestEvaluateRuleConditionFalse(t *testing.T) {
 	m := testModel(t)
 	eval := NewEvaluator(m)
-	rule := compileTestRule(t, "test-rule", "false", sampleFindingMeta())
+	rule := compileTestRule(t, "false", sampleFindingMeta())
 	obj := sampleUnstructuredObject()
 
 	err := eval.EvaluateRule(rule, obj)
@@ -96,7 +96,7 @@ func TestEvaluateRuleConditionFalse(t *testing.T) {
 func TestEvaluateRuleCELRuntimeError(t *testing.T) {
 	m := testModel(t)
 	eval := NewEvaluator(m)
-	rule := compileTestRule(t, "test-rule", "object.spec.missing.field == 'x'", sampleFindingMeta())
+	rule := compileTestRule(t, "object.spec.missing.field == 'x'", sampleFindingMeta())
 	obj := sampleUnstructuredObject()
 
 	err := eval.EvaluateRule(rule, obj)
@@ -111,7 +111,7 @@ func TestEvaluateRuleCELRuntimeError(t *testing.T) {
 func TestEvaluateRuleIdempotent(t *testing.T) {
 	m := testModel(t)
 	eval := NewEvaluator(m)
-	rule := compileTestRule(t, "test-rule", "true", sampleFindingMeta())
+	rule := compileTestRule(t, "true", sampleFindingMeta())
 	obj := sampleUnstructuredObject()
 
 	require.NoError(t, eval.EvaluateRule(rule, obj))
@@ -137,7 +137,7 @@ func TestEvaluateRuleNilProgram(t *testing.T) {
 func TestEvaluateRuleNilObject(t *testing.T) {
 	m := testModel(t)
 	eval := NewEvaluator(m)
-	rule := compileTestRule(t, "test-rule", "true", sampleFindingMeta())
+	rule := compileTestRule(t, "true", sampleFindingMeta())
 
 	err := eval.EvaluateRule(rule, nil)
 	require.Error(t, err)
@@ -147,7 +147,7 @@ func TestEvaluateRuleNilObject(t *testing.T) {
 func TestEvaluateRuleNonBoolResult(t *testing.T) {
 	m := testModel(t)
 	eval := NewEvaluator(m)
-	rule := compileTestRule(t, "test-rule", "'not-a-bool'", sampleFindingMeta())
+	rule := compileTestRule(t, "'not-a-bool'", sampleFindingMeta())
 	obj := sampleUnstructuredObject()
 
 	err := eval.EvaluateRule(rule, obj)
@@ -160,7 +160,7 @@ func TestEvaluateRuleInvalidFindingTypeUUID(t *testing.T) {
 	eval := NewEvaluator(m)
 	meta := sampleFindingMeta()
 	meta.Type.UUID = "not-a-uuid"
-	rule := compileTestRule(t, "test-rule", "true", meta)
+	rule := compileTestRule(t, "true", meta)
 	obj := sampleUnstructuredObject()
 
 	err := eval.EvaluateRule(rule, obj)
