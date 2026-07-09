@@ -9,6 +9,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
+	"gitlab.com/emeland/k8s-model/internal/sensor"
 	mdlapi "go.emeland.io/modelsrv/pkg/model/api"
 	"go.emeland.io/modelsrv/pkg/model/common"
 	"go.emeland.io/modelsrv/pkg/model/component"
@@ -197,6 +198,7 @@ func convertNamespaceToContext(ns *corev1.Namespace, clusterContextID uuid.UUID)
 	ctx := mdlctx.NewContext(id)
 	ctx.SetDisplayName(ns.Name)
 	ctx.SetDescription("Kubernetes namespace " + ns.Name)
+	ctx.SetContextTypeById(sensor.K8sNamespaceContextTypeID)
 	if ns.Name != "kube-system" && clusterContextID != uuid.Nil {
 		ctx.SetParentById(clusterContextID)
 	}

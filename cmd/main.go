@@ -153,6 +153,12 @@ func main() {
 	nameIndex := controller.NewNameIndex()
 	ruleRepo := controller.NewRuleRepo()
 
+	sensorID, err := sensor.Register(emModel)
+	if err != nil {
+		setupLog.Error(err, "unable to register sensor identity")
+		os.Exit(1)
+	}
+
 	c := mgr.GetClient()
 	s := mgr.GetScheme()
 
@@ -246,6 +252,9 @@ func main() {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	if err := sensorID.Close(); err != nil {
+		setupLog.Error(err, "problem deregistering sensor node")
+	}
 	if err := apiServer.Shutdown(shutdownCtx); err != nil {
 		setupLog.Error(err, "problem shutting down modelsrv API")
 	}
