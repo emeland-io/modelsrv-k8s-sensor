@@ -8,7 +8,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.22.0
 	github.com/onsi/gomega v1.36.1
 	github.com/stretchr/testify v1.11.1
-	go.emeland.io/modelsrv v0.9.3-rc3
+	go.emeland.io/modelsrv v0.10.0
 	k8s.io/api v0.31.0
 	k8s.io/apimachinery v0.31.0
 	k8s.io/client-go v0.31.0
