@@ -69,3 +69,11 @@
     - get
     - patch
     - update
+- apiGroups:
+    - structure.emeland.io
+  resources:
+    - findingrules
+  verbs:
+    - get
+    - list
+    - watch
