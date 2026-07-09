@@ -12,8 +12,10 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"gitlab.com/emeland/k8s-model/internal/helm"
 	"go.emeland.io/modelsrv/pkg/model"
@@ -146,8 +148,20 @@ func (r *HelmReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 func (r *HelmReleaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("HelmRelease").
-		For(&corev1.Secret{}).
+		For(&corev1.Secret{}, builder.WithPredicates(helmSecretPredicate())).
 		Complete(r)
+}
+
+// helmSecretPredicate filters events to only Secrets of type helm.sh/release.v1.
+func helmSecretPredicate() predicate.Funcs {
+	isHelmSecret := func(obj client.Object) bool {
+		secret, ok := obj.(*corev1.Secret)
+		if !ok {
+			return false
+		}
+		return secret.Type == "helm.sh/release.v1"
+	}
+	return predicate.NewPredicateFuncs(isHelmSecret)
 }
 
 // helmKindToResourceKind maps Helm manifest resource kinds to NameIndex ResourceKinds.
