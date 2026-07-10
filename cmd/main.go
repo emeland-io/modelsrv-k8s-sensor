@@ -152,6 +152,7 @@ func main() {
 	emModel := b.GetModel()
 	nameIndex := controller.NewNameIndex()
 	ruleRepo := controller.NewRuleRepo()
+	evaluator := controller.NewEvaluator(emModel)
 
 	sensorID, err := sensor.Register(emModel)
 	if err != nil {
@@ -166,10 +167,10 @@ func main() {
 		name string
 		r    interface{ SetupWithManager(ctrl.Manager) error }
 	}{
-		{"System", &controller.SystemReconciler{Client: c, Scheme: s, Model: emModel, Index: nameIndex}},
-		{"API", &controller.APIReconciler{Client: c, Scheme: s, Model: emModel, Index: nameIndex}},
-		{"Component", &controller.ComponentReconciler{Client: c, Scheme: s, Model: emModel, Index: nameIndex}},
-		{"SystemInstance", &controller.SystemInstanceReconciler{Client: c, Scheme: s, Model: emModel, Index: nameIndex}},
+		{"System", &controller.SystemReconciler{Client: c, Scheme: s, Model: emModel, Index: nameIndex, RuleEval: controller.NewRuleEvaluation(ruleRepo, evaluator, "structure.emeland.io/systems")}},
+		{"API", &controller.APIReconciler{Client: c, Scheme: s, Model: emModel, Index: nameIndex, RuleEval: controller.NewRuleEvaluation(ruleRepo, evaluator, "structure.emeland.io/apis")}},
+		{"Component", &controller.ComponentReconciler{Client: c, Scheme: s, Model: emModel, Index: nameIndex, RuleEval: controller.NewRuleEvaluation(ruleRepo, evaluator, "structure.emeland.io/components")}},
+		{"SystemInstance", &controller.SystemInstanceReconciler{Client: c, Scheme: s, Model: emModel, Index: nameIndex, RuleEval: controller.NewRuleEvaluation(ruleRepo, evaluator, "structure.emeland.io/systeminstances")}},
 	}
 	for _, cc := range crdControllers {
 		if err = cc.r.SetupWithManager(mgr); err != nil {
@@ -179,18 +180,20 @@ func main() {
 	}
 
 	workloads := []struct {
-		kind      string
-		prototype client.Object
-		skipFunc  func(client.Object) bool
+		kind         string
+		resourceType string
+		prototype    client.Object
+		skipFunc     func(client.Object) bool
 	}{
-		{"Deployment", &appsv1.Deployment{}, nil},
-		{"StatefulSet", &appsv1.StatefulSet{}, nil},
-		{"DaemonSet", &appsv1.DaemonSet{}, nil},
-		{"CronJob", &batchv1.CronJob{}, nil},
-		{"Job", &batchv1.Job{}, controller.IsOwnedByCronJob},
+		{"Deployment", "apps/deployments", &appsv1.Deployment{}, nil},
+		{"StatefulSet", "apps/statefulsets", &appsv1.StatefulSet{}, nil},
+		{"DaemonSet", "apps/daemonsets", &appsv1.DaemonSet{}, nil},
+		{"CronJob", "batch/cronjobs", &batchv1.CronJob{}, nil},
+		{"Job", "batch/jobs", &batchv1.Job{}, controller.IsOwnedByCronJob},
 	}
 	for _, w := range workloads {
 		r := controller.NewWorkloadReconciler(c, s, emModel, nameIndex, w.prototype, w.kind, w.skipFunc)
+		r.RuleEval = controller.NewRuleEvaluation(ruleRepo, evaluator, w.resourceType)
 		if err = r.SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", w.kind)
 			os.Exit(1)
@@ -198,14 +201,16 @@ func main() {
 	}
 
 	apiResources := []struct {
-		kind      string
-		prototype client.Object
+		kind         string
+		resourceType string
+		prototype    client.Object
 	}{
-		{"Service", &corev1.Service{}},
-		{"Ingress", &networkingv1.Ingress{}},
+		{"Service", "/services", &corev1.Service{}},
+		{"Ingress", "networking.k8s.io/ingresses", &networkingv1.Ingress{}},
 	}
 	for _, a := range apiResources {
 		r := controller.NewAPIInstanceReconciler(c, s, emModel, nameIndex, a.prototype, a.kind)
+		r.RuleEval = controller.NewRuleEvaluation(ruleRepo, evaluator, a.resourceType)
 		if err = r.SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", a.kind)
 			os.Exit(1)
@@ -213,10 +218,11 @@ func main() {
 	}
 
 	if err = (&controller.NamespaceReconciler{
-		Client: c,
-		Scheme: s,
-		Model:  emModel,
-		Index:  nameIndex,
+		Client:   c,
+		Scheme:   s,
+		Model:    emModel,
+		Index:    nameIndex,
+		RuleEval: controller.NewRuleEvaluation(ruleRepo, evaluator, "/namespaces"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Namespace")
 		os.Exit(1)

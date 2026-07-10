@@ -43,6 +43,7 @@ type NamespaceReconciler struct {
 	Scheme *runtime.Scheme
 	Model  model.Model
 	Index  *NameIndex
+	RuleEval *RuleEvaluation
 
 	mu               sync.RWMutex
 	clusterContextID uuid.UUID
@@ -106,6 +107,7 @@ func (r *NamespaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 	r.Index.Put(KindContext, req.Name, id)
+	r.RuleEval.run(ns)
 
 	return ctrl.Result{}, nil
 }

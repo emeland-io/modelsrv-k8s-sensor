@@ -39,6 +39,7 @@ type WorkloadReconciler struct {
 	Scheme *runtime.Scheme
 	Model  model.Model
 	Index  *NameIndex
+	RuleEval *RuleEvaluation
 
 	prototype client.Object
 	kind      string
@@ -81,6 +82,7 @@ func (r *WorkloadReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			return ctrl.Result{}, err
 		}
 		r.Index.Put(KindComponentInstance, req.NamespacedName.String(), id)
+		r.RuleEval.run(obj)
 	} else if k8serrors.IsNotFound(err) {
 		id := r.Index.Delete(KindComponentInstance, req.NamespacedName.String())
 		if id == uuid.Nil {

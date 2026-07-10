@@ -39,6 +39,7 @@ type APIInstanceReconciler struct {
 	Scheme *runtime.Scheme
 	Model  model.Model
 	Index  *NameIndex
+	RuleEval *RuleEvaluation
 
 	prototype client.Object
 	kind      string
@@ -76,6 +77,7 @@ func (r *APIInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, err
 		}
 		r.Index.Put(KindAPIInstance, req.NamespacedName.String(), id)
+		r.RuleEval.run(obj)
 	} else if k8serrors.IsNotFound(err) {
 		id := r.Index.Delete(KindAPIInstance, req.NamespacedName.String())
 		if id == uuid.Nil {

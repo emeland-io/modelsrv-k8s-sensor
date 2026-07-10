@@ -39,6 +39,7 @@ type APIReconciler struct {
 	Scheme *runtime.Scheme
 	Model  model.Model
 	Index  *NameIndex
+	RuleEval *RuleEvaluation
 }
 
 // +kubebuilder:rbac:groups=structure.emeland.io,resources=apis,verbs=get;list;watch;create;update;patch;delete
@@ -62,6 +63,7 @@ func (r *APIReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			return ctrl.Result{}, err
 		}
 		r.Index.Put(KindAPI, req.NamespacedName.String(), id)
+		r.RuleEval.run(api)
 	} else if k8serrors.IsNotFound(err) {
 		id := r.Index.Delete(KindAPI, req.NamespacedName.String())
 		if id == uuid.Nil {
