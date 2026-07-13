@@ -36,9 +36,10 @@ import (
 // ComponentReconciler reconciles a Component object
 type ComponentReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Model  model.Model
-	Index  *NameIndex
+	Scheme   *runtime.Scheme
+	Model    model.Model
+	Index    *NameIndex
+	RuleEval *RuleEvaluation
 }
 
 // +kubebuilder:rbac:groups=structure.emeland.io,resources=components,verbs=get;list;watch;create;update;patch;delete
@@ -62,6 +63,7 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return ctrl.Result{}, err
 		}
 		r.Index.Put(KindComponent, req.NamespacedName.String(), id)
+		r.RuleEval.run(comp)
 	} else if k8serrors.IsNotFound(err) {
 		id := r.Index.Delete(KindComponent, req.NamespacedName.String())
 		if id == uuid.Nil {

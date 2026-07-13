@@ -132,4 +132,57 @@ var _ = Describe("NamespaceReconciler", func() {
 
 		Expect(b.GetModel().GetContextById(id)).To(BeNil())
 	})
+
+	It("should evaluate FindingRules and create findings on reconcile", func() {
+		ctx := context.Background()
+		ksUID := uuid.New()
+		nsUID := uuid.New()
+		ksNS := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{Name: "kube-system", UID: types.UID(ksUID.String())},
+		}
+		ns := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "my-app",
+				UID:  types.UID(nsUID.String()),
+			},
+		}
+
+		b, err := backend.New()
+		Expect(err).NotTo(HaveOccurred())
+		idx := NewNameIndex()
+		fakeClient := newFakeClient(ksNS, ns)
+
+		repo := NewRuleRepo()
+		Expect(repo.Set(namespaceFindingRule("ns-rule", "true"))).To(Succeed())
+
+		r := &NamespaceReconciler{
+			Client:   fakeClient,
+			Scheme:   testScheme,
+			Model:    b.GetModel(),
+			Index:    idx,
+			RuleEval: NewRuleEvaluation(repo, NewEvaluator(b.GetModel()), "/namespaces"),
+		}
+
+		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: "kube-system"}})
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: "my-app"}})
+		Expect(err).NotTo(HaveOccurred())
+
+		findings, err := b.GetModel().GetFindings()
+		Expect(err).NotTo(HaveOccurred())
+
+		expectedIDs := map[uuid.UUID]struct{}{
+			evaluatorFindingID("ns-rule", types.UID(ksUID.String())): {},
+			evaluatorFindingID("ns-rule", types.UID(nsUID.String())): {},
+		}
+		matched := 0
+		for _, f := range findings {
+			if _, ok := expectedIDs[f.GetFindingId()]; ok {
+				matched++
+				Expect(f.GetDisplayName()).To(Equal("TestFinding"))
+			}
+		}
+		Expect(matched).To(Equal(2))
+	})
 })

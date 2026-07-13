@@ -49,7 +49,7 @@ func sampleUnstructuredObject() *unstructured.Unstructured {
 	obj.SetAPIVersion("v1")
 	obj.SetKind("Namespace")
 	obj.SetName("test-ns")
-	obj.SetUID(types.UID("abc-123-uid"))
+	obj.SetUID(types.UID("fa538332-fb6d-51ef-99f3-87831ac140fb"))
 	return obj
 }
 
@@ -59,7 +59,7 @@ func TestEvaluateRuleConditionTrue(t *testing.T) {
 	rule := compileTestRule(t, "true", sampleFindingMeta())
 	obj := sampleUnstructuredObject()
 
-	err := eval.EvaluateRule(rule, obj)
+	err := eval.EvaluateRule(rule, obj, events.ContextResource)
 	require.NoError(t, err)
 
 	findings, err := m.GetFindings()
@@ -70,6 +70,21 @@ func TestEvaluateRuleConditionTrue(t *testing.T) {
 	assert.Equal(t, "TestFinding", f.GetDisplayName())
 	assert.Equal(t, "test description", f.GetDescription())
 	assert.Equal(t, uuid.MustParse("fa538332-fb6d-51ef-99f3-87831ac140fb"), f.GetFindingTypeId())
+
+	ft, err := f.GetFindingType()
+	require.NoError(t, err)
+	require.NotNil(t, ft)
+	assert.Equal(t, "TestType", ft.GetDisplayName())
+
+	require.Len(t, f.GetResources(), 1)
+	assert.Equal(t, uuid.MustParse("fa538332-fb6d-51ef-99f3-87831ac140fb"), f.GetResources()[0].ResourceId)
+	assert.Equal(t, events.ContextResource, f.GetResources()[0].ResourceType)
+
+	types, err := m.GetFindingTypes()
+	require.NoError(t, err)
+	require.Len(t, types, 1)
+	assert.Equal(t, "TestType", types[0].GetDisplayName())
+
 	assert.Equal(t, evaluatorFindingID("test-rule", obj.GetUID()), f.GetFindingId())
 
 	ann := f.GetAnnotations()
@@ -85,7 +100,7 @@ func TestEvaluateRuleConditionFalse(t *testing.T) {
 	rule := compileTestRule(t, "false", sampleFindingMeta())
 	obj := sampleUnstructuredObject()
 
-	err := eval.EvaluateRule(rule, obj)
+	err := eval.EvaluateRule(rule, obj, events.ContextResource)
 	require.NoError(t, err)
 
 	findings, err := m.GetFindings()
@@ -99,7 +114,7 @@ func TestEvaluateRuleCELRuntimeError(t *testing.T) {
 	rule := compileTestRule(t, "object.spec.missing.field == 'x'", sampleFindingMeta())
 	obj := sampleUnstructuredObject()
 
-	err := eval.EvaluateRule(rule, obj)
+	err := eval.EvaluateRule(rule, obj, events.ContextResource)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "CEL evaluation failed")
 
@@ -114,8 +129,8 @@ func TestEvaluateRuleIdempotent(t *testing.T) {
 	rule := compileTestRule(t, "true", sampleFindingMeta())
 	obj := sampleUnstructuredObject()
 
-	require.NoError(t, eval.EvaluateRule(rule, obj))
-	require.NoError(t, eval.EvaluateRule(rule, obj))
+	require.NoError(t, eval.EvaluateRule(rule, obj, events.ContextResource))
+	require.NoError(t, eval.EvaluateRule(rule, obj, events.ContextResource))
 
 	findings, err := m.GetFindings()
 	require.NoError(t, err)
@@ -129,7 +144,7 @@ func TestEvaluateRuleNilProgram(t *testing.T) {
 	rule := CompiledRule{Name: "test-rule", Finding: sampleFindingMeta()}
 	obj := sampleUnstructuredObject()
 
-	err := eval.EvaluateRule(rule, obj)
+	err := eval.EvaluateRule(rule, obj, events.ContextResource)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "CEL program is nil")
 }
@@ -139,7 +154,7 @@ func TestEvaluateRuleNilObject(t *testing.T) {
 	eval := NewEvaluator(m)
 	rule := compileTestRule(t, "true", sampleFindingMeta())
 
-	err := eval.EvaluateRule(rule, nil)
+	err := eval.EvaluateRule(rule, nil, events.ContextResource)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "object is nil")
 }
@@ -150,7 +165,7 @@ func TestEvaluateRuleNonBoolResult(t *testing.T) {
 	rule := compileTestRule(t, "'not-a-bool'", sampleFindingMeta())
 	obj := sampleUnstructuredObject()
 
-	err := eval.EvaluateRule(rule, obj)
+	err := eval.EvaluateRule(rule, obj, events.ContextResource)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "must return bool")
 }
@@ -163,7 +178,7 @@ func TestEvaluateRuleInvalidFindingTypeUUID(t *testing.T) {
 	rule := compileTestRule(t, "true", meta)
 	obj := sampleUnstructuredObject()
 
-	err := eval.EvaluateRule(rule, obj)
+	err := eval.EvaluateRule(rule, obj, events.ContextResource)
 	require.NoError(t, err)
 
 	findings, err := m.GetFindings()

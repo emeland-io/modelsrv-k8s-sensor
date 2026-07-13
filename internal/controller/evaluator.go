@@ -4,7 +4,10 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	structurev1alpha1 "gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
+	"go.emeland.io/modelsrv/pkg/events"
 	"go.emeland.io/modelsrv/pkg/model"
+	"go.emeland.io/modelsrv/pkg/model/common"
 	"go.emeland.io/modelsrv/pkg/model/finding"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
@@ -38,9 +41,11 @@ func evaluatorFindingID(ruleName string, subjectUID types.UID) uuid.UUID {
 
 // EvaluateRule evaluates rule.Program against obj (bound as CEL variable "object",
 // matching the env in rule_registry.go). If the result is true, builds and pushes
-// a Finding into the model. CEL runtime errors (e.g. unguarded missing fields) and
-// non-bool results are returned as an error, never panic.
-func (e *Evaluator) EvaluateRule(rule CompiledRule, obj *unstructured.Unstructured) error {
+// a Finding into the model. subjectResourceType identifies the modelsrv resource
+// kind for linking the subject object in Finding.Resources.
+// CEL runtime errors (e.g. unguarded missing fields) and non-bool results are
+// returned as an error, never panic.
+func (e *Evaluator) EvaluateRule(rule CompiledRule, obj *unstructured.Unstructured, subjectResourceType events.ResourceType) error {
 	if rule.Program == nil {
 		return fmt.Errorf("rule %q: CEL program is nil", rule.Name)
 	}
@@ -64,7 +69,7 @@ func (e *Evaluator) EvaluateRule(rule CompiledRule, obj *unstructured.Unstructur
 		return nil
 	}
 
-	f, err := buildFinding(rule, obj)
+	f, err := buildFinding(e.Model, rule, obj, subjectResourceType)
 	if err != nil {
 		return fmt.Errorf("rule %q: build finding: %w", rule.Name, err)
 	}
@@ -75,7 +80,31 @@ func (e *Evaluator) EvaluateRule(rule CompiledRule, obj *unstructured.Unstructur
 	return nil
 }
 
-func buildFinding(rule CompiledRule, obj *unstructured.Unstructured) (finding.Finding, error) {
+func ensureFindingType(m model.Model, meta structurev1alpha1.FindingType) (finding.FindingType, error) {
+	typeID := parseOptionalUUID(meta.UUID)
+	if typeID == uuid.Nil {
+		return nil, nil
+	}
+
+	if ft := m.GetFindingTypeById(typeID); ft != nil {
+		return ft, nil
+	}
+
+	ft := finding.NewFindingType(typeID)
+	ft.SetDisplayName(meta.DisplayName)
+	if meta.Description != "" {
+		ft.SetDescription(meta.Description)
+	}
+	if err := m.AddFindingType(ft); err != nil {
+		if existing := m.GetFindingTypeById(typeID); existing != nil {
+			return existing, nil
+		}
+		return nil, err
+	}
+	return ft, nil
+}
+
+func buildFinding(m model.Model, rule CompiledRule, obj *unstructured.Unstructured, subjectResourceType events.ResourceType) (finding.Finding, error) {
 	uid := obj.GetUID()
 	if uid == "" {
 		return nil, fmt.Errorf("object has no UID")
@@ -86,8 +115,20 @@ func buildFinding(rule CompiledRule, obj *unstructured.Unstructured) (finding.Fi
 	f.SetDisplayName(rule.Finding.DisplayName)
 	f.SetDescription(rule.Finding.Description)
 
-	if typeID := parseOptionalUUID(rule.Finding.Type.UUID); typeID != uuid.Nil {
-		f.SetFindingTypeById(typeID)
+	ft, err := ensureFindingType(m, rule.Finding.Type)
+	if err != nil {
+		return nil, fmt.Errorf("ensure finding type: %w", err)
+	}
+	if ft != nil {
+		f.SetFindingTypeByRef(ft)
+	}
+
+	subjectID := parseOptionalUUID(string(uid))
+	if subjectID != uuid.Nil && subjectResourceType != events.UnknownResourceType {
+		f.SetResources([]*common.ResourceRef{{
+			ResourceId:   subjectID,
+			ResourceType: subjectResourceType,
+		}})
 	}
 
 	applyAnnotations(f.GetAnnotations(), map[string]string{
