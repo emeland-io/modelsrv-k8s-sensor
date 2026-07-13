@@ -40,9 +40,9 @@ import (
 // become child contexts with kube-system as parent.
 type NamespaceReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Model  model.Model
-	Index  *NameIndex
+	Scheme   *runtime.Scheme
+	Model    model.Model
+	Index    *NameIndex
 	RuleEval *RuleEvaluation
 
 	mu               sync.RWMutex

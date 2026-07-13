@@ -36,9 +36,9 @@ import (
 // It handles Deployment, StatefulSet, DaemonSet, CronJob, and Job.
 type WorkloadReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Model  model.Model
-	Index  *NameIndex
+	Scheme   *runtime.Scheme
+	Model    model.Model
+	Index    *NameIndex
 	RuleEval *RuleEvaluation
 
 	prototype client.Object

@@ -36,9 +36,9 @@ import (
 // ComponentReconciler reconciles a Component object
 type ComponentReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Model  model.Model
-	Index  *NameIndex
+	Scheme   *runtime.Scheme
+	Model    model.Model
+	Index    *NameIndex
 	RuleEval *RuleEvaluation
 }
 

@@ -29,11 +29,11 @@ func namespaceFindingRule(name, condition string) *structurev1alpha1.FindingRule
 	}
 }
 
-func sampleNamespace(name string, uid types.UID) *corev1.Namespace {
+func testNamespace() *corev1.Namespace {
 	return &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-			UID:  uid,
+			Name: "test-ns",
+			UID:  types.UID(testNamespaceUID),
 		},
 	}
 }
@@ -45,7 +45,7 @@ func TestRuleEvaluationRunCreatesFinding(t *testing.T) {
 
 	eval := NewEvaluator(m)
 	ruleEval := NewRuleEvaluation(repo, eval, "/namespaces")
-	ns := sampleNamespace("test-ns", types.UID(testNamespaceUID))
+	ns := testNamespace()
 
 	ruleEval.run(ns)
 
@@ -67,7 +67,7 @@ func TestRuleEvaluationRunNoMatchingRules(t *testing.T) {
 	repo := NewRuleRepo()
 	eval := NewEvaluator(m)
 	ruleEval := NewRuleEvaluation(repo, eval, "/namespaces")
-	ns := sampleNamespace("test-ns", types.UID(testNamespaceUID))
+	ns := testNamespace()
 
 	ruleEval.run(ns)
 
@@ -83,7 +83,7 @@ func TestRuleEvaluationRunConditionFalse(t *testing.T) {
 
 	eval := NewEvaluator(m)
 	ruleEval := NewRuleEvaluation(repo, eval, "/namespaces")
-	ns := sampleNamespace("test-ns", types.UID(testNamespaceUID))
+	ns := testNamespace()
 
 	ruleEval.run(ns)
 
@@ -95,13 +95,13 @@ func TestRuleEvaluationRunConditionFalse(t *testing.T) {
 func TestRuleEvaluationRunNilReceiver(t *testing.T) {
 	var ruleEval *RuleEvaluation
 	assert.NotPanics(t, func() {
-		ruleEval.run(sampleNamespace("test-ns", types.UID(testNamespaceUID)))
+		ruleEval.run(testNamespace())
 	})
 }
 
 func TestRuleEvaluationRunNilFields(t *testing.T) {
 	ruleEval := &RuleEvaluation{}
 	assert.NotPanics(t, func() {
-		ruleEval.run(sampleNamespace("test-ns", types.UID(testNamespaceUID)))
+		ruleEval.run(testNamespace())
 	})
 }

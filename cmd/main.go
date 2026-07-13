@@ -167,10 +167,46 @@ func main() {
 		name string
 		r    interface{ SetupWithManager(ctrl.Manager) error }
 	}{
-		{"System", &controller.SystemReconciler{Client: c, Scheme: s, Model: emModel, Index: nameIndex, RuleEval: controller.NewRuleEvaluation(ruleRepo, evaluator, "structure.emeland.io/systems")}},
-		{"API", &controller.APIReconciler{Client: c, Scheme: s, Model: emModel, Index: nameIndex, RuleEval: controller.NewRuleEvaluation(ruleRepo, evaluator, "structure.emeland.io/apis")}},
-		{"Component", &controller.ComponentReconciler{Client: c, Scheme: s, Model: emModel, Index: nameIndex, RuleEval: controller.NewRuleEvaluation(ruleRepo, evaluator, "structure.emeland.io/components")}},
-		{"SystemInstance", &controller.SystemInstanceReconciler{Client: c, Scheme: s, Model: emModel, Index: nameIndex, RuleEval: controller.NewRuleEvaluation(ruleRepo, evaluator, "structure.emeland.io/systeminstances")}},
+		{
+			"System",
+			&controller.SystemReconciler{
+				Client:   c,
+				Scheme:   s,
+				Model:    emModel,
+				Index:    nameIndex,
+				RuleEval: controller.NewRuleEvaluation(ruleRepo, evaluator, "structure.emeland.io/systems"),
+			},
+		},
+		{
+			"API",
+			&controller.APIReconciler{
+				Client:   c,
+				Scheme:   s,
+				Model:    emModel,
+				Index:    nameIndex,
+				RuleEval: controller.NewRuleEvaluation(ruleRepo, evaluator, "structure.emeland.io/apis"),
+			},
+		},
+		{
+			"Component",
+			&controller.ComponentReconciler{
+				Client:   c,
+				Scheme:   s,
+				Model:    emModel,
+				Index:    nameIndex,
+				RuleEval: controller.NewRuleEvaluation(ruleRepo, evaluator, "structure.emeland.io/components"),
+			},
+		},
+		{
+			"SystemInstance",
+			&controller.SystemInstanceReconciler{
+				Client:   c,
+				Scheme:   s,
+				Model:    emModel,
+				Index:    nameIndex,
+				RuleEval: controller.NewRuleEvaluation(ruleRepo, evaluator, "structure.emeland.io/systeminstances"),
+			},
+		},
 	}
 	for _, cc := range crdControllers {
 		if err = cc.r.SetupWithManager(mgr); err != nil {

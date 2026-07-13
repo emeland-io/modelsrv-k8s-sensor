@@ -36,9 +36,9 @@ import (
 // SystemInstanceReconciler reconciles a SystemInstance object
 type SystemInstanceReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Model  model.Model
-	Index  *NameIndex
+	Scheme   *runtime.Scheme
+	Model    model.Model
+	Index    *NameIndex
 	RuleEval *RuleEvaluation
 }
 
