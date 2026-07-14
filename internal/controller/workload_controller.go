@@ -30,6 +30,7 @@ import (
 
 	"go.emeland.io/modelsrv/pkg/model"
 	"go.emeland.io/modelsrv/pkg/model/common"
+	"go.emeland.io/modelsrv/pkg/model/system"
 )
 
 // WorkloadReconciler maps native K8s workload resources to ComponentInstance.
@@ -75,6 +76,12 @@ func (r *WorkloadReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if ci == nil {
 			log.Error(nil, "skipping workload with no resolvable UUID", "kind", r.kind, "name", req.NamespacedName)
 			return ctrl.Result{}, nil
+		}
+		// If the Helm owner index knows about this resource, set the SystemInstance ref.
+		if ci.GetSystemInstance() == nil {
+			if siID := r.Index.GetHelmOwner(KindComponentInstance, req.NamespacedName.String()); siID != uuid.Nil {
+				ci.SetSystemInstance(&system.SystemInstanceRef{InstanceId: siID})
+			}
 		}
 		if err := r.Model.AddComponentInstance(ci); err != nil {
 			log.Error(err, "could not add component instance to model", "kind", r.kind)

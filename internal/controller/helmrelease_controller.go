@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"gitlab.com/emeland/k8s-model/internal/helm"
@@ -79,6 +80,13 @@ func (r *HelmReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, nil
 		}
 
+		// Only process releases that are currently deployed.
+		if releaseData.Info.Status != "deployed" {
+			log.V(1).Info("skipping non-deployed release", "release", releaseName,
+				"status", releaseData.Info.Status)
+			return ctrl.Result{}, nil
+		}
+
 		// Check if the release already deploys a SystemInstance CRD.
 		resources := helm.ParseManifestResources(releaseData.Manifest)
 		if helm.HasSystemInstance(resources) {
@@ -132,6 +140,8 @@ func (r *HelmReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if id == uuid.Nil {
 			return ctrl.Result{}, nil
 		}
+		// Remove all HelmOwner entries that pointed to this SystemInstance.
+		r.Index.DeleteHelmOwnersBySystemInstance(id)
 		delErr := r.Model.DeleteSystemInstanceById(id)
 		if delErr != nil && !errors.Is(delErr, common.ErrSystemInstanceNotFound) {
 			log.Error(delErr, "could not delete SystemInstance from model", "release", releaseName)
@@ -146,10 +156,60 @@ func (r *HelmReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 }
 
 func (r *HelmReleaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// Register a runnable that populates latestRevision from existing Helm secrets
+	// after the informer cache has synced. This prevents orphaned SystemInstances
+	// if the pod restarts and a Helm secret is deleted before re-reconciliation.
+	if err := mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
+		// Wait for the cache to sync before listing.
+		if !mgr.GetCache().WaitForCacheSync(ctx) {
+			return fmt.Errorf("cache sync failed")
+		}
+		return r.populateLatestRevisions(ctx)
+	})); err != nil {
+		return fmt.Errorf("add helm startup runnable: %w", err)
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("HelmRelease").
 		For(&corev1.Secret{}, builder.WithPredicates(helmSecretPredicate())).
 		Complete(r)
+}
+
+// populateLatestRevisions lists all existing Helm secrets and records their
+// revision numbers. This must run after the cache has synced.
+func (r *HelmReleaseReconciler) populateLatestRevisions(ctx context.Context) error {
+	log := ctrllog.FromContext(ctx).WithName("HelmRelease-startup")
+
+	var secrets corev1.SecretList
+	if err := r.List(ctx, &secrets); err != nil {
+		return fmt.Errorf("list secrets: %w", err)
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.latestRevision == nil {
+		r.latestRevision = make(map[string]int)
+	}
+
+	count := 0
+	for i := range secrets.Items {
+		s := &secrets.Items[i]
+		if s.Type != "helm.sh/release.v1" {
+			continue
+		}
+		releaseName, revision, ok := helm.SecretNameParts(s.Name)
+		if !ok {
+			continue
+		}
+		releaseKey := s.Namespace + "/" + releaseName
+		if revision > r.latestRevision[releaseKey] {
+			r.latestRevision[releaseKey] = revision
+			count++
+		}
+	}
+
+	log.Info("populated Helm release revision cache", "releases", count)
+	return nil
 }
 
 // helmSecretPredicate filters events to only Secrets of type helm.sh/release.v1.
@@ -176,7 +236,9 @@ var helmKindToResourceKind = map[string]ResourceKind{
 }
 
 // correlateResources links existing ComponentInstances and APIInstances
-// to the SystemInstance created for this Helm release.
+// to the SystemInstance created for this Helm release, and populates the
+// HelmOwner index so that workload/API controllers can set the ref even
+// if they reconcile after the Helm controller.
 func (r *HelmReleaseReconciler) correlateResources(
 	resources []helm.ManifestResource,
 	releaseNamespace string,
@@ -197,10 +259,14 @@ func (r *HelmReleaseReconciler) correlateResources(
 		}
 		nameKey := ns + "/" + res.Name
 
+		// Always record ownership so workload/API controllers can look it up.
+		r.Index.SetHelmOwner(kind, nameKey, systemInstanceID)
+
 		resourceID := r.Index.Get(kind, nameKey)
 		if resourceID == uuid.Nil {
-			// Resource not yet reconciled by the sensor; will be correlated
-			// on next reconcile of that resource or next helm reconcile.
+			// Resource not yet reconciled by the sensor; the workload/API
+			// controller will pick up the SystemInstance ref from the
+			// HelmOwner index when it runs.
 			continue
 		}
 

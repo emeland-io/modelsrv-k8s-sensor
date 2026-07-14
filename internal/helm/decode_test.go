@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/base64"
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,17 +13,9 @@ import (
 // encodeTestRelease creates a realistic Secret.Data["release"] payload for testing.
 func encodeTestRelease(t *testing.T, rel *Release) []byte {
 	t.Helper()
-	jsonBytes, err := json.Marshal(rel)
+	data, err := EncodeRelease(rel)
 	require.NoError(t, err)
-
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	_, err = gz.Write(jsonBytes)
-	require.NoError(t, err)
-	require.NoError(t, gz.Close())
-
-	encoded := base64.StdEncoding.EncodeToString(buf.Bytes())
-	return []byte(encoded)
+	return data
 }
 
 func TestDecodeReleaseData(t *testing.T) {

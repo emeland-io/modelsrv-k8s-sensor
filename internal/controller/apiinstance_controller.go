@@ -30,6 +30,7 @@ import (
 
 	"go.emeland.io/modelsrv/pkg/model"
 	"go.emeland.io/modelsrv/pkg/model/common"
+	"go.emeland.io/modelsrv/pkg/model/system"
 )
 
 // APIInstanceReconciler maps native K8s resources to APIInstance.
@@ -70,6 +71,12 @@ func (r *APIInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if ai == nil {
 			log.Error(nil, "skipping API instance with no resolvable UUID", "kind", r.kind, "name", req.NamespacedName)
 			return ctrl.Result{}, nil
+		}
+		// If the Helm owner index knows about this resource, set the SystemInstance ref.
+		if ai.GetSystemInstance() == nil {
+			if siID := r.Index.GetHelmOwner(KindAPIInstance, req.NamespacedName.String()); siID != uuid.Nil {
+				ai.SetSystemInstance(&system.SystemInstanceRef{InstanceId: siID})
+			}
 		}
 		if err := r.Model.AddApiInstance(ai); err != nil {
 			log.Error(err, "could not add api instance to model", "kind", r.kind)

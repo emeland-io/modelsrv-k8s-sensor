@@ -1,10 +1,6 @@
 package controller
 
 import (
-	"bytes"
-	"compress/gzip"
-	"encoding/base64"
-	"encoding/json"
 	"testing"
 
 	"github.com/go-logr/logr"
@@ -129,14 +125,9 @@ func TestHelmKindMapping(t *testing.T) {
 
 func encodeRelease(t *testing.T, rel *helm.Release) []byte {
 	t.Helper()
-	jsonBytes, err := json.Marshal(rel)
+	data, err := helm.EncodeRelease(rel)
 	require.NoError(t, err)
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	_, err = gz.Write(jsonBytes)
-	require.NoError(t, err)
-	require.NoError(t, gz.Close())
-	return []byte(base64.StdEncoding.EncodeToString(buf.Bytes()))
+	return data
 }
 
 func helmTestFakeClient(t *testing.T, objs ...corev1.Secret) client.Client {
@@ -233,6 +224,7 @@ func TestHelmReconcile_SkipsIfReleaseDeploisSystemInstance(t *testing.T) {
 		Name:      "self-managed",
 		Namespace: "ns",
 		Version:   1,
+		Info:      helm.Info{Status: "deployed"},
 		Chart:     helm.Chart{Metadata: helm.ChartMetadata{Name: "chart", Version: "1.0"}},
 		Manifest:  "---\napiVersion: structure.emeland.io/v1alpha1\nkind: SystemInstance\nmetadata:\n  name: my-si\n  namespace: ns\n",
 	}
@@ -262,6 +254,45 @@ func TestHelmReconcile_SkipsIfReleaseDeploisSystemInstance(t *testing.T) {
 	assert.Nil(t, b.GetModel().GetSystemInstanceById(expectedID))
 }
 
+func TestHelmReconcile_SkipsNonDeployedRelease(t *testing.T) {
+	ctx := t.Context()
+	b, err := backend.New()
+	require.NoError(t, err)
+
+	rel := &helm.Release{
+		Name:      "failed-release",
+		Namespace: "ns",
+		Version:   1,
+		Info:      helm.Info{Status: "failed"},
+		Chart:     helm.Chart{Metadata: helm.ChartMetadata{Name: "chart", Version: "1.0"}},
+		Manifest:  "---\nkind: Deployment\nmetadata:\n  name: app\n  namespace: ns\n",
+	}
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "sh.helm.release.v1.failed-release.v1",
+			Namespace: "ns",
+		},
+		Type: "helm.sh/release.v1",
+		Data: map[string][]byte{"release": encodeRelease(t, rel)},
+	}
+
+	fakeClient := helmTestFakeClient(t, *secret)
+	r := &HelmReleaseReconciler{
+		Client: fakeClient,
+		Scheme: nil,
+		Model:  b.GetModel(),
+		Index:  NewNameIndex(),
+	}
+
+	nn := types.NamespacedName{Name: secret.Name, Namespace: secret.Namespace}
+	_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+	require.NoError(t, err)
+
+	expectedID := uuid.NewSHA1(helmNamespaceUUID, []byte("ns/failed-release"))
+	assert.Nil(t, b.GetModel().GetSystemInstanceById(expectedID))
+}
+
 func TestHelmReconcile_DeletesSystemInstance(t *testing.T) {
 	ctx := t.Context()
 	b, err := backend.New()
@@ -271,6 +302,7 @@ func TestHelmReconcile_DeletesSystemInstance(t *testing.T) {
 	// First: create via reconcile
 	rel := &helm.Release{
 		Name: "del-me", Namespace: "ns", Version: 2,
+		Info:     helm.Info{Status: "deployed"},
 		Chart:    helm.Chart{Metadata: helm.ChartMetadata{Name: "c", Version: "1"}},
 		Manifest: "---\nkind: Deployment\nmetadata:\n  name: x\n  namespace: ns\n",
 	}
