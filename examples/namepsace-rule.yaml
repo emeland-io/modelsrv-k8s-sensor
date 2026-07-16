@@ -1,0 +1,20 @@
+apiVersion: structure.emeland.io/v1alpha1
+kind: FindingRule
+metadata:
+  name: namespace-requires-app-backend-label
+spec:
+  target:
+    apiGroups: [""]
+    resources: ["namespaces"]
+  condition: >-
+    !has(object.metadata.labels) ||
+    !has(object.metadata.labels.app) ||
+    object.metadata.labels.app != 'backend'
+  finding:
+    severity: high
+    displayName: NamespaceMissingAppBackendLabel
+    description: Namespace must have label app=backend.
+    type:
+      uuid: "c3d4e5f6-a7b8-9012-cdef-123456789012"
+      displayName: NamespaceLabelValidation
+      description: Alerts when a namespace is missing the required app=backend label

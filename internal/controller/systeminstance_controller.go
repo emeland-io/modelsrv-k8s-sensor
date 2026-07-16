@@ -36,9 +36,10 @@ import (
 // SystemInstanceReconciler reconciles a SystemInstance object
 type SystemInstanceReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Model  model.Model
-	Index  *NameIndex
+	Scheme   *runtime.Scheme
+	Model    model.Model
+	Index    *NameIndex
+	RuleEval *RuleEvaluation
 }
 
 // +kubebuilder:rbac:groups=structure.emeland.io,resources=systeminstances,verbs=get;list;watch;create;update;patch;delete
@@ -62,6 +63,7 @@ func (r *SystemInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			return ctrl.Result{}, err
 		}
 		r.Index.Put(KindSystemInstance, req.NamespacedName.String(), id)
+		r.RuleEval.run(systemInstance)
 	} else if k8serrors.IsNotFound(err) {
 		id := r.Index.Delete(KindSystemInstance, req.NamespacedName.String())
 		if id == uuid.Nil {
