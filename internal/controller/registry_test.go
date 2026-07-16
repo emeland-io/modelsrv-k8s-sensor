@@ -42,3 +42,35 @@ func TestNameIndexConcurrent(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestHelmOwnerSetGetDelete(t *testing.T) {
+	idx := NewNameIndex()
+	siID := uuid.New()
+
+	idx.SetHelmOwner(KindComponentInstance, "ns/deploy", siID)
+	assert.Equal(t, siID, idx.GetHelmOwner(KindComponentInstance, "ns/deploy"))
+	assert.Equal(t, uuid.Nil, idx.GetHelmOwner(KindComponentInstance, "ns/other"))
+	assert.Equal(t, uuid.Nil, idx.GetHelmOwner(KindAPIInstance, "ns/deploy"))
+
+	idx.DeleteHelmOwner(KindComponentInstance, "ns/deploy")
+	assert.Equal(t, uuid.Nil, idx.GetHelmOwner(KindComponentInstance, "ns/deploy"))
+}
+
+func TestHelmOwnerDeleteBySystemInstance(t *testing.T) {
+	idx := NewNameIndex()
+	si1 := uuid.New()
+	si2 := uuid.New()
+
+	idx.SetHelmOwner(KindComponentInstance, "ns/a", si1)
+	idx.SetHelmOwner(KindComponentInstance, "ns/b", si1)
+	idx.SetHelmOwner(KindAPIInstance, "ns/svc", si1)
+	idx.SetHelmOwner(KindComponentInstance, "ns/c", si2)
+
+	idx.DeleteHelmOwnersBySystemInstance(si1)
+
+	assert.Equal(t, uuid.Nil, idx.GetHelmOwner(KindComponentInstance, "ns/a"))
+	assert.Equal(t, uuid.Nil, idx.GetHelmOwner(KindComponentInstance, "ns/b"))
+	assert.Equal(t, uuid.Nil, idx.GetHelmOwner(KindAPIInstance, "ns/svc"))
+	// si2 entries should be untouched
+	assert.Equal(t, si2, idx.GetHelmOwner(KindComponentInstance, "ns/c"))
+}

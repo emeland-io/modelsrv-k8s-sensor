@@ -2,6 +2,7 @@
     - ""
   resources:
     - namespaces
+    - secrets
     - services
   verbs:
     - get

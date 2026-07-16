@@ -75,6 +75,7 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var allowInboundPush bool
+	var helmReleaseScanning bool
 	var subscriberURLs string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
@@ -91,6 +92,9 @@ func main() {
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.BoolVar(&allowInboundPush, "allow-inbound-push", false,
 		"If set, allow POST /api/events/push (inbound replication). Default false: sensor is replication source only.")
+	flag.BoolVar(&helmReleaseScanning, "helm-release-scanning",
+		envOrDefault("FEATURE_HELM_RELEASE_SCANNING", "true") == "true",
+		"Enable Helm release scanning to create SystemInstances from installed releases.")
 	flag.StringVar(&subscriberURLs, "subscriber-urls", envOrDefault("SUBSCRIBER_URLS", ""),
 		"Comma-separated downstream modelsrv base API URLs to register as replication subscribers "+
 			"(e.g. http://host:8080/api).")
@@ -268,6 +272,20 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "FindingRule")
 		os.Exit(1)
 	}
+
+	if helmReleaseScanning {
+		setupLog.Info("Helm release scanning enabled")
+		if err = (&controller.HelmReleaseReconciler{
+			Client: c,
+			Scheme: s,
+			Model:  emModel,
+			Index:  nameIndex,
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "HelmRelease")
+			os.Exit(1)
+		}
+	}
+
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

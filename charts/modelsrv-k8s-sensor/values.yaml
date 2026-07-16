@@ -32,6 +32,8 @@ manager:
   apiPort: 8080
   # Reject inbound POST /api/events/push (sensor is replication source only).
   allowInboundPush: false
+  # Scan Helm v3/v4 releases to create SystemInstances from installed charts.
+  helmReleaseScanning: true
   # Downstream modelsrv base API URLs to register at startup (each must include /api).
   subscriberUrls: []
 

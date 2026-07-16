@@ -49,6 +49,12 @@ Inbound replication (`POST /api/events/push`) is **disabled by default** because
 
 Controller-runtime health probes remain on `:8081`; secure metrics on `:8443`.
 
+## Helm Release Scanning
+
+The sensor can watch Helm v3/v4 release Secrets (`helm.sh/release.v1`) and create a SystemInstance for each installed chart. Workloads and services deployed by a release are automatically correlated to the SystemInstance.
+
+Enabled by default. Disable with `--helm-release-scanning=false` or env `FEATURE_HELM_RELEASE_SCANNING=false`.
+
 ## Authors
 
 * [cypherfox](https://gitlab.com/cypherfox)
