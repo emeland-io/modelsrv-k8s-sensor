@@ -18,6 +18,17 @@ serviceAccount:
 podAnnotations: {}
 podLabels: {}
 
+# Pod-level security context.
+podSecurityContext:
+  runAsNonRoot: true
+
+# Container-level security context (applied to the manager container).
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
 # Manager container args (controller-runtime)
 manager:
   leaderElect: true
@@ -50,6 +61,8 @@ resources:
   requests:
     cpu: 10m
     memory: 64Mi
+
+
 
 nodeSelector: {}
 tolerations: []
