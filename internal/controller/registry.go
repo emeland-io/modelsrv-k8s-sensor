@@ -17,6 +17,8 @@ const (
 	KindSystemInstance    ResourceKind = "SystemInstance"
 	KindAPIInstance       ResourceKind = "APIInstance"
 	KindComponentInstance ResourceKind = "ComponentInstance"
+	KindRole              ResourceKind = "Role"
+	KindBinding           ResourceKind = "Binding"
 )
 
 // NameIndex maps K8s resource names (namespace/name or bare name for cluster-scoped)
