@@ -5,7 +5,9 @@ import (
 
 	"github.com/google/uuid"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
@@ -14,6 +16,7 @@ import (
 	"go.emeland.io/modelsrv/pkg/model/common"
 	"go.emeland.io/modelsrv/pkg/model/component"
 	mdlctx "go.emeland.io/modelsrv/pkg/model/context"
+	"go.emeland.io/modelsrv/pkg/model/iam"
 	"go.emeland.io/modelsrv/pkg/model/system"
 )
 
@@ -23,6 +26,10 @@ const (
 	AnnotationSystemInstanceID = "systemInstanceId.emeland.io"
 	AnnotationAPIID            = "apiId.emeland.io"
 	AnnotationSystemID         = "systemId.emeland.io"
+
+	// RBAC annotation keys per issue #6.
+	AnnotationRoleSpecID = "emeland.io/k8s-sensor-role-spec-id"
+	AnnotationSubjectID  = "emeland.io/k8s-sensor-subject-id"
 )
 
 // --- CRD helpers ---
@@ -240,4 +247,77 @@ func apiInstanceFromMeta(obj client.Object) (mdlapi.ApiInstance, uuid.UUID) {
 
 func annotationUUID(annotations map[string]string, key string) uuid.UUID {
 	return parseOptionalUUID(annotations[key])
+}
+
+// --- RBAC helpers ---
+
+// roleFromRBAC converts a K8s Role or ClusterRole into an EmELand Role.
+// The UUID is derived from the K8s object UID.
+// If AnnotationRoleSpecID is set to a valid UUID, the RoleSpec ref is populated.
+func roleFromRBAC(obj client.Object) (iam.Role, uuid.UUID) {
+	uid := parseOptionalUUID(string(obj.GetUID()))
+	if uid == uuid.Nil {
+		return nil, uuid.Nil
+	}
+	r := iam.NewRole(uid)
+	r.SetDisplayName(obj.GetName())
+	applyAnnotations(r.GetAnnotations(), obj.GetAnnotations())
+
+	if specID := annotationUUID(obj.GetAnnotations(), AnnotationRoleSpecID); specID != uuid.Nil {
+		r.SetRoleSpecById(specID)
+	}
+	return r, uid
+}
+
+// bindingFromRBAC converts a K8s RoleBinding or ClusterRoleBinding into an
+// EmELand Binding. The role ref is resolved via the NameIndex using roleIndexKey
+// (namespace/name for Roles, bare name for ClusterRoles).
+func bindingFromRBAC(obj client.Object, roleIndexKey string, subjectKind string, idx *NameIndex) (iam.Binding, uuid.UUID) {
+	uid := parseOptionalUUID(string(obj.GetUID()))
+	if uid == uuid.Nil {
+		return nil, uuid.Nil
+	}
+	b := iam.NewBinding(uid)
+	b.SetDisplayName(obj.GetName())
+	applyAnnotations(b.GetAnnotations(), obj.GetAnnotations())
+
+	// Resolve the role reference through the name index.
+	if roleID := idx.Get(KindRole, roleIndexKey); roleID != uuid.Nil {
+		b.SetRole(&iam.RoleRef{RoleId: roleID})
+	}
+
+	// Set subject from annotation, using the K8s subject kind to pick Group vs Identity.
+	if subjectID := annotationUUID(obj.GetAnnotations(), AnnotationSubjectID); subjectID != uuid.Nil {
+		switch subjectKind {
+		case "User", "ServiceAccount":
+			b.SetSubject(&iam.SubjectRef{
+				Identity: &iam.IdentityRef{IdentityId: subjectID},
+			})
+		default: // "Group" or anything else
+			b.SetSubject(&iam.SubjectRef{
+				Group: &iam.GroupRef{GroupId: subjectID},
+			})
+		}
+	}
+
+	return b, uid
+}
+
+// firstSubjectKind returns the Kind of the first subject in a RoleBinding's
+// subjects list, or empty string if there are none.
+func firstSubjectKind(subjects []rbacv1.Subject) string {
+	if len(subjects) == 0 {
+		return ""
+	}
+	return subjects[0].Kind
+}
+
+// roleIndexKey returns the key used to store a Role/ClusterRole in the
+// NameIndex. Namespaced Roles use "namespace/name"; cluster-scoped ClusterRoles
+// use just "name" (no leading slash).
+func roleIndexKey(nn types.NamespacedName) string {
+	if nn.Namespace == "" {
+		return nn.Name
+	}
+	return nn.Namespace + "/" + nn.Name
 }

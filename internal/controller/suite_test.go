@@ -27,6 +27,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -52,6 +53,7 @@ var _ = BeforeSuite(func() {
 	Expect(appsv1.AddToScheme(testScheme)).To(Succeed())
 	Expect(batchv1.AddToScheme(testScheme)).To(Succeed())
 	Expect(networkingv1.AddToScheme(testScheme)).To(Succeed())
+	Expect(rbacv1.AddToScheme(testScheme)).To(Succeed())
 
 	// Global fake client for existing CRD controller tests.
 	k8sClient = newFakeClient()

@@ -34,6 +34,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -253,6 +254,53 @@ func main() {
 		r.RuleEval = controller.NewRuleEvaluation(ruleRepo, evaluator, a.resourceType)
 		if err = r.SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", a.kind)
+			os.Exit(1)
+		}
+	}
+
+	// RBAC controllers: map K8s Role/ClusterRole to EmELand Role,
+	// and RoleBinding/ClusterRoleBinding to EmELand Binding.
+
+	// Register well-known FindingTypes so they exist even with no active findings.
+	if err = controller.RegisterRBACFindingTypes(emModel); err != nil {
+		setupLog.Error(err, "unable to register RBAC finding types")
+		os.Exit(1)
+	}
+
+	// Create binding reconcilers first so we can wire them into the role reconcilers.
+	rbacBindings := []struct {
+		kind      string
+		prototype client.Object
+	}{
+		{"RoleBinding", &rbacv1.RoleBinding{}},
+		{"ClusterRoleBinding", &rbacv1.ClusterRoleBinding{}},
+	}
+	var bindingReconcilers = make([]*controller.RoleBindingReconciler, 0, len(rbacBindings))
+	for _, rb := range rbacBindings {
+		rbc := controller.NewRoleBindingReconciler(c, s, emModel, nameIndex, rb.prototype, rb.kind)
+		if err = rbc.SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", rb.kind)
+			os.Exit(1)
+		}
+		bindingReconcilers = append(bindingReconcilers, rbc)
+	}
+
+	rbacRoles := []struct {
+		kind      string
+		prototype client.Object
+	}{
+		{"Role", &rbacv1.Role{}},
+		{"ClusterRole", &rbacv1.ClusterRole{}},
+	}
+	for _, rr := range rbacRoles {
+		rc := controller.NewRoleReconciler(c, s, emModel, nameIndex, rr.prototype, rr.kind)
+		// Wire binding reconcilers so late-arriving roles can re-enqueue
+		// pending bindings. Routing picks the matching reconciler by scope.
+		for _, rbc := range bindingReconcilers {
+			rc.SetBindingReconciler(rbc)
+		}
+		if err = rc.SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", rr.kind)
 			os.Exit(1)
 		}
 	}
