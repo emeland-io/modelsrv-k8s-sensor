@@ -7,6 +7,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
@@ -309,4 +310,14 @@ func firstSubjectKind(subjects []rbacv1.Subject) string {
 		return ""
 	}
 	return subjects[0].Kind
+}
+
+// roleIndexKey returns the key used to store a Role/ClusterRole in the
+// NameIndex. Namespaced Roles use "namespace/name"; cluster-scoped ClusterRoles
+// use just "name" (no leading slash).
+func roleIndexKey(nn types.NamespacedName) string {
+	if nn.Namespace == "" {
+		return nn.Name
+	}
+	return nn.Namespace + "/" + nn.Name
 }

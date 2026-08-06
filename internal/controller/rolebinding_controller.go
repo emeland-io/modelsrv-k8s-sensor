@@ -24,11 +24,17 @@ import (
 	"github.com/google/uuid"
 	rbacv1 "k8s.io/api/rbac/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logr "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
+	"go.emeland.io/modelsrv/pkg/events"
 	"go.emeland.io/modelsrv/pkg/model"
 	"go.emeland.io/modelsrv/pkg/model/common"
 	"go.emeland.io/modelsrv/pkg/model/finding"
@@ -47,6 +53,10 @@ type RoleBindingReconciler struct {
 
 	prototype client.Object
 	kind      string
+
+	// requeue is fed by EnqueueBinding to re-reconcile bindings whose Role
+	// arrived late (after the binding was first reconciled).
+	requeue chan event.GenericEvent
 }
 
 // NewRoleBindingReconciler creates a reconciler for a RoleBinding or ClusterRoleBinding kind.
@@ -58,6 +68,7 @@ func NewRoleBindingReconciler(c client.Client, scheme *runtime.Scheme, m model.M
 		Index:     idx,
 		prototype: prototype,
 		kind:      kind,
+		requeue:   make(chan event.GenericEvent, 64),
 	}
 }
 
@@ -85,6 +96,16 @@ func (r *RoleBindingReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			log.Error(nil, "skipping RBAC binding with no resolvable UUID", "kind", r.kind, "name", req.NamespacedName)
 			return ctrl.Result{}, nil
 		}
+
+		// If the referenced Role is not in the index yet, record this binding
+		// as pending so the Role controller can trigger re-reconciliation later.
+		if r.Index.Get(KindRole, roleIndexKey) == uuid.Nil {
+			r.Index.AddPendingBinding(roleIndexKey, req.NamespacedName.String())
+		} else {
+			// Role is present now, clear any stale pending entry.
+			r.Index.RemovePendingBinding(roleIndexKey, req.NamespacedName.String())
+		}
+
 		if err := r.Model.AddBinding(binding); err != nil {
 			log.Error(err, "could not add binding to model", "kind", r.kind)
 			return ctrl.Result{}, err
@@ -98,6 +119,8 @@ func (r *RoleBindingReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if id == uuid.Nil {
 			return ctrl.Result{}, nil
 		}
+		// Clean up any pending-binding entry (in case role never arrived).
+		r.Index.RemovePendingBindingByName(req.NamespacedName.String())
 		// Remove associated finding.
 		_ = r.Model.DeleteFindingById(subjectFindingID(id))
 
@@ -144,6 +167,10 @@ func (r *RoleBindingReconciler) reconcileSubjectFinding(bindingID uuid.UUID, obj
 		r.kind, obj.GetName(), AnnotationSubjectID,
 	))
 	f.SetFindingTypeById(MissingSubjectAnnotationFindingTypeID)
+	f.SetResources([]*common.ResourceRef{{
+		ResourceId:   bindingID,
+		ResourceType: events.BindingResource,
+	}})
 	_ = r.Model.AddFinding(f)
 }
 
@@ -156,5 +183,40 @@ func (r *RoleBindingReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(r.kind).
 		For(r.prototype).
+		WatchesRawSource(source.Channel(r.requeue, &handler.EnqueueRequestForObject{})).
 		Complete(r)
+}
+
+// EnqueueBinding triggers a re-reconcile of the given binding (identified by
+// its NamespacedName string, e.g. "namespace/name" or "name").
+func (r *RoleBindingReconciler) EnqueueBinding(nameKey string) {
+	nn := parseNamespacedName(nameKey)
+	// Best-effort enqueue; drop if channel is full (will be picked up on
+	// the next periodic resync).
+	select {
+	case r.requeue <- event.GenericEvent{Object: &metav1.PartialObjectMetadata{
+		ObjectMeta: metav1.ObjectMeta{Name: nn.Name, Namespace: nn.Namespace},
+	}}:
+	default:
+	}
+}
+
+// IsClusterScoped returns true if this reconciler handles cluster-scoped
+// resources (ClusterRoleBinding).
+func (r *RoleBindingReconciler) IsClusterScoped() bool {
+	return r.kind == "ClusterRoleBinding"
+}
+
+// parseNamespacedName splits a "namespace/name" string back into a
+// types.NamespacedName. This is the inverse of NamespacedName.String(), which
+// always formats as "namespace/name" with exactly one slash. Cluster-scoped
+// resources have an empty namespace, so their string form is just "name" (no
+// slash) after going through roleIndexKey/our index storage.
+func parseNamespacedName(s string) types.NamespacedName {
+	for i := range s {
+		if s[i] == '/' {
+			return types.NamespacedName{Namespace: s[:i], Name: s[i+1:]}
+		}
+	}
+	return types.NamespacedName{Name: s}
 }

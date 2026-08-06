@@ -29,6 +29,10 @@ const (
 // a Helm release, it stores a mapping from (ResourceKind, namespace/name) to the
 // SystemInstance UUID of the owning release. This enables workload/API controllers
 // to set the SystemInstance ref regardless of reconciliation ordering.
+//
+// Additionally it tracks pending role-binding references: when a RoleBinding
+// reconciles before its referenced Role, it records itself so the Role controller
+// can trigger re-reconciliation once the Role appears.
 type NameIndex struct {
 	mu    sync.RWMutex
 	names map[ResourceKind]map[string]uuid.UUID
@@ -36,13 +40,18 @@ type NameIndex struct {
 	// helmOwner maps ResourceKind -> "namespace/name" -> SystemInstance UUID.
 	// Populated by the HelmRelease controller, read by workload/API controllers.
 	helmOwner map[ResourceKind]map[string]uuid.UUID
+
+	// pendingBindings maps roleIndexKey -> set of binding NamespacedName strings
+	// that are waiting for the role to appear in the index.
+	pendingBindings map[string]map[string]struct{}
 }
 
 // NewNameIndex creates an empty name index.
 func NewNameIndex() *NameIndex {
 	return &NameIndex{
-		names:     make(map[ResourceKind]map[string]uuid.UUID),
-		helmOwner: make(map[ResourceKind]map[string]uuid.UUID),
+		names:           make(map[ResourceKind]map[string]uuid.UUID),
+		helmOwner:       make(map[ResourceKind]map[string]uuid.UUID),
+		pendingBindings: make(map[string]map[string]struct{}),
 	}
 }
 
@@ -131,4 +140,66 @@ func (idx *NameIndex) DeleteHelmOwnersBySystemInstance(systemInstanceID uuid.UUI
 			}
 		}
 	}
+}
+
+// AddPendingBinding records that a RoleBinding (identified by its NamespacedName
+// string) is waiting for the given roleIndexKey to appear in the index.
+func (idx *NameIndex) AddPendingBinding(roleIndexKey string, bindingName string) {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	m, ok := idx.pendingBindings[roleIndexKey]
+	if !ok {
+		m = make(map[string]struct{})
+		idx.pendingBindings[roleIndexKey] = m
+	}
+	m[bindingName] = struct{}{}
+}
+
+// RemovePendingBinding removes a single pending-binding entry, e.g. when the
+// binding is deleted before the role arrives.
+func (idx *NameIndex) RemovePendingBinding(roleIndexKey string, bindingName string) {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	if m, ok := idx.pendingBindings[roleIndexKey]; ok {
+		delete(m, bindingName)
+		if len(m) == 0 {
+			delete(idx.pendingBindings, roleIndexKey)
+		}
+	}
+}
+
+// RemovePendingBindingByName removes a binding from all pending sets regardless
+// of which role it was waiting on. Used when a binding is deleted and we no
+// longer know its roleRef.
+func (idx *NameIndex) RemovePendingBindingByName(bindingName string) {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	for roleKey, m := range idx.pendingBindings {
+		delete(m, bindingName)
+		if len(m) == 0 {
+			delete(idx.pendingBindings, roleKey)
+		}
+	}
+}
+
+// ResolvePendingBindings drains the pending set for the given roleIndexKey and
+// returns the set of binding NamespacedName strings that were waiting. The
+// caller is responsible for re-enqueuing them into the appropriate binding
+// reconciler(s).
+func (idx *NameIndex) ResolvePendingBindings(roleIndexKey string) []string {
+	idx.mu.Lock()
+	pending, ok := idx.pendingBindings[roleIndexKey]
+	if ok {
+		delete(idx.pendingBindings, roleIndexKey)
+	}
+	idx.mu.Unlock()
+
+	if !ok {
+		return nil
+	}
+	names := make([]string, 0, len(pending))
+	for name := range pending {
+		names = append(names, name)
+	}
+	return names
 }

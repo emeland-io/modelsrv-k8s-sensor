@@ -64,7 +64,7 @@ var _ = Describe("Role Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify the role was added to the model.
-			roleID := idx.Get(KindRole, namespacedName.String())
+			roleID := idx.Get(KindRole, roleIndexKey(namespacedName))
 			Expect(roleID).NotTo(Equal(uuid.Nil))
 
 			emRole := b.GetModel().GetRoleById(roleID)
@@ -100,7 +100,7 @@ var _ = Describe("Role Controller", func() {
 			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
 			Expect(err).NotTo(HaveOccurred())
 
-			roleID := idx.Get(KindRole, namespacedName.String())
+			roleID := idx.Get(KindRole, roleIndexKey(namespacedName))
 			Expect(roleID).NotTo(Equal(uuid.Nil))
 
 			// Finding should exist.
@@ -130,7 +130,7 @@ var _ = Describe("Role Controller", func() {
 			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
 			Expect(err).NotTo(HaveOccurred())
 
-			roleID := idx.Get(KindRole, namespacedName.String())
+			roleID := idx.Get(KindRole, roleIndexKey(namespacedName))
 			Expect(roleID).NotTo(Equal(uuid.Nil))
 
 			// Ensure finding was created (no annotation).
@@ -144,7 +144,7 @@ var _ = Describe("Role Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Role and finding should be gone.
-			Expect(idx.Get(KindRole, namespacedName.String())).To(Equal(uuid.Nil))
+			Expect(idx.Get(KindRole, roleIndexKey(namespacedName))).To(Equal(uuid.Nil))
 			Expect(b.GetModel().GetRoleById(roleID)).To(BeNil())
 			Expect(b.GetModel().GetFindingById(findingID)).To(BeNil())
 		})
@@ -179,9 +179,68 @@ var _ = Describe("Role Controller", func() {
 			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
 			Expect(err).NotTo(HaveOccurred())
 
-			roleID := idx.Get(KindRole, namespacedName.String())
+			roleID := idx.Get(KindRole, roleIndexKey(namespacedName))
 			Expect(roleID).NotTo(Equal(uuid.Nil))
 			Expect(b.GetModel().GetRoleById(roleID)).NotTo(BeNil())
+		})
+
+		It("should be resolvable by a ClusterRoleBinding via the name index", func() {
+			cr := &rbacv1.ClusterRole{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: clusterRoleName,
+					UID:  types.UID(uuid.New().String()),
+					Annotations: map[string]string{
+						AnnotationRoleSpecID: uuid.New().String(),
+					},
+				},
+				Rules: []rbacv1.PolicyRule{
+					{APIGroups: []string{"*"}, Resources: []string{"*"}, Verbs: []string{"*"}},
+				},
+			}
+			crb := &rbacv1.ClusterRoleBinding{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-crb",
+					UID:  types.UID(uuid.New().String()),
+					Annotations: map[string]string{
+						AnnotationSubjectID: uuid.New().String(),
+					},
+				},
+				RoleRef: rbacv1.RoleRef{
+					APIGroup: "rbac.authorization.k8s.io",
+					Kind:     "ClusterRole",
+					Name:     clusterRoleName,
+				},
+				Subjects: []rbacv1.Subject{
+					{Kind: "Group", Name: "admins", APIGroup: "rbac.authorization.k8s.io"},
+				},
+			}
+
+			fc := newFakeClient(cr, crb)
+			b, err := backend.New()
+			Expect(err).NotTo(HaveOccurred())
+			idx := NewNameIndex()
+
+			// Reconcile the ClusterRole first.
+			roleReconciler := NewRoleReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.ClusterRole{}, "ClusterRole")
+			_, err = roleReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			roleID := idx.Get(KindRole, roleIndexKey(namespacedName))
+			Expect(roleID).NotTo(Equal(uuid.Nil))
+
+			// Now reconcile the ClusterRoleBinding - it should resolve the role ref.
+			crbNN := types.NamespacedName{Name: "test-crb"}
+			bindingReconciler := NewRoleBindingReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.ClusterRoleBinding{}, "ClusterRoleBinding")
+			_, err = bindingReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: crbNN})
+			Expect(err).NotTo(HaveOccurred())
+
+			bindingID := idx.Get(KindBinding, crbNN.String())
+			Expect(bindingID).NotTo(Equal(uuid.Nil))
+
+			emBinding := b.GetModel().GetBindingById(bindingID)
+			Expect(emBinding).NotTo(BeNil())
+			Expect(emBinding.GetRole()).NotTo(BeNil())
+			Expect(emBinding.GetRole().EffectiveRoleID()).To(Equal(roleID))
 		})
 	})
 })

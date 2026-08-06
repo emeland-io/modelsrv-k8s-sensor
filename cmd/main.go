@@ -260,6 +260,31 @@ func main() {
 
 	// RBAC controllers: map K8s Role/ClusterRole to EmELand Role,
 	// and RoleBinding/ClusterRoleBinding to EmELand Binding.
+
+	// Register well-known FindingTypes so they exist even with no active findings.
+	if err = controller.RegisterRBACFindingTypes(emModel); err != nil {
+		setupLog.Error(err, "unable to register RBAC finding types")
+		os.Exit(1)
+	}
+
+	// Create binding reconcilers first so we can wire them into the role reconcilers.
+	rbacBindings := []struct {
+		kind      string
+		prototype client.Object
+	}{
+		{"RoleBinding", &rbacv1.RoleBinding{}},
+		{"ClusterRoleBinding", &rbacv1.ClusterRoleBinding{}},
+	}
+	var bindingReconcilers = make([]*controller.RoleBindingReconciler, 0, len(rbacBindings))
+	for _, rb := range rbacBindings {
+		rbc := controller.NewRoleBindingReconciler(c, s, emModel, nameIndex, rb.prototype, rb.kind)
+		if err = rbc.SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", rb.kind)
+			os.Exit(1)
+		}
+		bindingReconcilers = append(bindingReconcilers, rbc)
+	}
+
 	rbacRoles := []struct {
 		kind      string
 		prototype client.Object
@@ -269,23 +294,13 @@ func main() {
 	}
 	for _, rr := range rbacRoles {
 		rc := controller.NewRoleReconciler(c, s, emModel, nameIndex, rr.prototype, rr.kind)
+		// Wire binding reconcilers so late-arriving roles can re-enqueue
+		// pending bindings. Routing picks the matching reconciler by scope.
+		for _, rbc := range bindingReconcilers {
+			rc.SetBindingReconciler(rbc)
+		}
 		if err = rc.SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", rr.kind)
-			os.Exit(1)
-		}
-	}
-
-	rbacBindings := []struct {
-		kind      string
-		prototype client.Object
-	}{
-		{"RoleBinding", &rbacv1.RoleBinding{}},
-		{"ClusterRoleBinding", &rbacv1.ClusterRoleBinding{}},
-	}
-	for _, rb := range rbacBindings {
-		rbc := controller.NewRoleBindingReconciler(c, s, emModel, nameIndex, rb.prototype, rb.kind)
-		if err = rbc.SetupWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create controller", "controller", rb.kind)
 			os.Exit(1)
 		}
 	}

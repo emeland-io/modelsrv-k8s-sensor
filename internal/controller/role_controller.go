@@ -28,6 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logr "sigs.k8s.io/controller-runtime/pkg/log"
 
+	"go.emeland.io/modelsrv/pkg/events"
 	"go.emeland.io/modelsrv/pkg/model"
 	"go.emeland.io/modelsrv/pkg/model/common"
 	"go.emeland.io/modelsrv/pkg/model/finding"
@@ -45,8 +46,9 @@ type RoleReconciler struct {
 	Model  model.Model
 	Index  *NameIndex
 
-	prototype client.Object
-	kind      string
+	prototype          client.Object
+	kind               string
+	bindingReconcilers []*RoleBindingReconciler
 }
 
 // NewRoleReconciler creates a reconciler for a Role or ClusterRole kind.
@@ -59,6 +61,12 @@ func NewRoleReconciler(c client.Client, scheme *runtime.Scheme, m model.Model, i
 		prototype: prototype,
 		kind:      kind,
 	}
+}
+
+// SetBindingReconciler adds a RoleBindingReconciler to be notified when a
+// Role appears that has pending binding references.
+func (r *RoleReconciler) SetBindingReconciler(rbc *RoleBindingReconciler) {
+	r.bindingReconcilers = append(r.bindingReconcilers, rbc)
 }
 
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles;clusterroles,verbs=get;list;watch
@@ -79,12 +87,24 @@ func (r *RoleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			log.Error(err, "could not add role to model", "kind", r.kind)
 			return ctrl.Result{}, err
 		}
-		r.Index.Put(KindRole, req.NamespacedName.String(), id)
+		indexKey := roleIndexKey(req.NamespacedName)
+		r.Index.Put(KindRole, indexKey, id)
 
 		// Issue a finding if the RoleSpec annotation is missing.
 		r.reconcileRoleSpecFinding(id, obj)
+
+		// Re-enqueue any bindings that arrived before this Role.
+		for _, bindingName := range r.Index.ResolvePendingBindings(indexKey) {
+			nn := parseNamespacedName(bindingName)
+			for _, rbc := range r.bindingReconcilers {
+				if rbc.IsClusterScoped() == (nn.Namespace == "") {
+					rbc.EnqueueBinding(bindingName)
+				}
+			}
+		}
 	} else if k8serrors.IsNotFound(err) {
-		id := r.Index.Delete(KindRole, req.NamespacedName.String())
+		indexKey := roleIndexKey(req.NamespacedName)
+		id := r.Index.Delete(KindRole, indexKey)
 		if id == uuid.Nil {
 			return ctrl.Result{}, nil
 		}
@@ -122,6 +142,10 @@ func (r *RoleReconciler) reconcileRoleSpecFinding(roleID uuid.UUID, obj client.O
 		r.kind, obj.GetName(), AnnotationRoleSpecID,
 	))
 	f.SetFindingTypeById(MissingRoleSpecAnnotationFindingTypeID)
+	f.SetResources([]*common.ResourceRef{{
+		ResourceId:   roleID,
+		ResourceType: events.RoleResource,
+	}})
 	_ = r.Model.AddFinding(f)
 }
 

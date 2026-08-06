@@ -291,4 +291,94 @@ var _ = Describe("RoleBinding Controller", func() {
 			Expect(subj.EffectiveKind()).To(Equal(iam.SubjectKindIdentity))
 		})
 	})
+
+	Context("When a Role arrives after its RoleBinding (late-arriving role)", func() {
+		ctx := context.Background()
+
+		It("should register a pending binding and resolve it when the Role appears", func() {
+			roleName := "late-role"
+			roleNamespace := "default"
+			roleNN := types.NamespacedName{Name: roleName, Namespace: roleNamespace}
+
+			rb := &rbacv1.RoleBinding{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "binding-for-late-role",
+					Namespace: roleNamespace,
+					UID:       types.UID(uuid.New().String()),
+					Annotations: map[string]string{
+						AnnotationSubjectID: uuid.New().String(),
+					},
+				},
+				RoleRef: rbacv1.RoleRef{
+					APIGroup: "rbac.authorization.k8s.io",
+					Kind:     "Role",
+					Name:     roleName,
+				},
+				Subjects: []rbacv1.Subject{
+					{Kind: "Group", Name: "team", APIGroup: "rbac.authorization.k8s.io"},
+				},
+			}
+
+			role := &rbacv1.Role{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      roleName,
+					Namespace: roleNamespace,
+					UID:       types.UID(uuid.New().String()),
+					Annotations: map[string]string{
+						AnnotationRoleSpecID: uuid.New().String(),
+					},
+				},
+				Rules: []rbacv1.PolicyRule{
+					{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"}},
+				},
+			}
+
+			fc := newFakeClient(rb, role)
+			b, err := backend.New()
+			Expect(err).NotTo(HaveOccurred())
+			idx := NewNameIndex()
+
+			bindingReconciler := NewRoleBindingReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.RoleBinding{}, "RoleBinding")
+			roleReconciler := NewRoleReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.Role{}, "Role")
+			roleReconciler.SetBindingReconciler(bindingReconciler)
+
+			// Reconcile the binding BEFORE the role exists in the index.
+			bindingNN := types.NamespacedName{Name: "binding-for-late-role", Namespace: roleNamespace}
+			_, err = bindingReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: bindingNN})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Binding should exist but without a role ref.
+			bindingID := idx.Get(KindBinding, bindingNN.String())
+			Expect(bindingID).NotTo(Equal(uuid.Nil))
+			emBinding := b.GetModel().GetBindingById(bindingID)
+			Expect(emBinding).NotTo(BeNil())
+			Expect(emBinding.GetRole()).To(BeNil())
+
+			// Now reconcile the role - this should trigger pending binding resolution.
+			_, err = roleReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: roleNN})
+			Expect(err).NotTo(HaveOccurred())
+
+			roleID := idx.Get(KindRole, roleIndexKey(roleNN))
+			Expect(roleID).NotTo(Equal(uuid.Nil))
+
+			// Drain the requeue channel and re-reconcile the binding.
+			select {
+			case evt := <-bindingReconciler.requeue:
+				requeuedNN := types.NamespacedName{
+					Name:      evt.Object.GetName(),
+					Namespace: evt.Object.GetNamespace(),
+				}
+				_, err = bindingReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: requeuedNN})
+				Expect(err).NotTo(HaveOccurred())
+			default:
+				Fail("expected a requeue event but channel was empty")
+			}
+
+			// Now the binding should have the role ref set.
+			emBinding = b.GetModel().GetBindingById(bindingID)
+			Expect(emBinding).NotTo(BeNil())
+			Expect(emBinding.GetRole()).NotTo(BeNil())
+			Expect(emBinding.GetRole().EffectiveRoleID()).To(Equal(roleID))
+		})
+	})
 })
