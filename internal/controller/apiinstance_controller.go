@@ -28,6 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logr "sigs.k8s.io/controller-runtime/pkg/log"
 
+	"go.emeland.io/modelsrv/pkg/events"
 	"go.emeland.io/modelsrv/pkg/model"
 	"go.emeland.io/modelsrv/pkg/model/common"
 	"go.emeland.io/modelsrv/pkg/model/system"
@@ -84,12 +85,16 @@ func (r *APIInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, err
 		}
 		r.Index.Put(KindAPIInstance, req.NamespacedName.String(), id)
+		r.reconcileAPIReferenceFindings(id, obj)
 		r.RuleEval.run(obj)
 	} else if k8serrors.IsNotFound(err) {
 		id := r.Index.Delete(KindAPIInstance, req.NamespacedName.String())
 		if id == uuid.Nil {
 			return ctrl.Result{}, nil
 		}
+		// Clean up any reference findings for this resource.
+		deleteReferenceFinding(r.Model, id, ReferencedResourceNotFound)
+		deleteReferenceFinding(r.Model, id, MissingResourceReference)
 		err = r.Model.DeleteApiInstanceById(id)
 		if errors.Is(err, common.ErrApiInstanceNotFound) {
 			err = nil
@@ -107,4 +112,32 @@ func (r *APIInstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Named(r.kind).
 		For(r.prototype).
 		Complete(r)
+}
+
+// reconcileAPIReferenceFindings checks the api-reference annotation and emits
+// or clears findings accordingly.
+func (r *APIInstanceReconciler) reconcileAPIReferenceFindings(id uuid.UUID, obj client.Object) {
+	annotations := obj.GetAnnotations()
+	// Check both new and legacy annotation keys.
+	apiID := annotationUUID(annotations, AnnotationAPIReference)
+	if apiID == uuid.Nil {
+		apiID = annotationUUID(annotations, AnnotationAPIID)
+	}
+
+	if apiID == uuid.Nil {
+		// No reference annotation at all: emit MissingResourceReference.
+		deleteReferenceFinding(r.Model, id, ReferencedResourceNotFound)
+		upsertMissingResourceReference(r.Model, id, events.APIInstanceResource, obj.GetName(), AnnotationAPIReference)
+		return
+	}
+
+	// Annotation present: clear MissingResourceReference.
+	deleteReferenceFinding(r.Model, id, MissingResourceReference)
+
+	// Check if the referenced API exists in the local model.
+	if r.Model.GetApiById(apiID) == nil {
+		upsertReferencedResourceNotFound(r.Model, id, events.APIInstanceResource, apiID, events.APIResource, obj.GetName())
+	} else {
+		deleteReferenceFinding(r.Model, id, ReferencedResourceNotFound)
+	}
 }

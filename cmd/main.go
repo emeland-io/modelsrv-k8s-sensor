@@ -266,6 +266,10 @@ func main() {
 		setupLog.Error(err, "unable to register RBAC finding types")
 		os.Exit(1)
 	}
+	if err = controller.RegisterReferenceFindingTypes(emModel); err != nil {
+		setupLog.Error(err, "unable to register reference finding types")
+		os.Exit(1)
+	}
 
 	// Create binding reconcilers first so we can wire them into the role reconcilers.
 	rbacBindings := []struct {

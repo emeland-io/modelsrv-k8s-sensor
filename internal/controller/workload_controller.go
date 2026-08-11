@@ -28,6 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logr "sigs.k8s.io/controller-runtime/pkg/log"
 
+	"go.emeland.io/modelsrv/pkg/events"
 	"go.emeland.io/modelsrv/pkg/model"
 	"go.emeland.io/modelsrv/pkg/model/common"
 	"go.emeland.io/modelsrv/pkg/model/system"
@@ -89,12 +90,16 @@ func (r *WorkloadReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			return ctrl.Result{}, err
 		}
 		r.Index.Put(KindComponentInstance, req.NamespacedName.String(), id)
+		r.reconcileComponentReferenceFindings(id, obj)
 		r.RuleEval.run(obj)
 	} else if k8serrors.IsNotFound(err) {
 		id := r.Index.Delete(KindComponentInstance, req.NamespacedName.String())
 		if id == uuid.Nil {
 			return ctrl.Result{}, nil
 		}
+		// Clean up any reference findings for this resource.
+		deleteReferenceFinding(r.Model, id, ReferencedResourceNotFound)
+		deleteReferenceFinding(r.Model, id, MissingResourceReference)
 		err = r.Model.DeleteComponentInstanceById(id)
 		if errors.Is(err, common.ErrComponentInstanceNotFound) {
 			err = nil
@@ -112,4 +117,32 @@ func (r *WorkloadReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Named(r.kind).
 		For(r.prototype).
 		Complete(r)
+}
+
+// reconcileComponentReferenceFindings checks the component-reference annotation
+// and emits or clears findings accordingly.
+func (r *WorkloadReconciler) reconcileComponentReferenceFindings(id uuid.UUID, obj client.Object) {
+	annotations := obj.GetAnnotations()
+	// Check both new and legacy annotation keys.
+	compID := annotationUUID(annotations, AnnotationComponentReference)
+	if compID == uuid.Nil {
+		compID = annotationUUID(annotations, AnnotationComponentID)
+	}
+
+	if compID == uuid.Nil {
+		// No reference annotation at all: emit MissingResourceReference.
+		deleteReferenceFinding(r.Model, id, ReferencedResourceNotFound)
+		upsertMissingResourceReference(r.Model, id, events.ComponentInstanceResource, obj.GetName(), AnnotationComponentReference)
+		return
+	}
+
+	// Annotation present: clear MissingResourceReference.
+	deleteReferenceFinding(r.Model, id, MissingResourceReference)
+
+	// Check if the referenced Component exists in the local model.
+	if r.Model.GetComponentById(compID) == nil {
+		upsertReferencedResourceNotFound(r.Model, id, events.ComponentInstanceResource, compID, events.ComponentResource, obj.GetName())
+	} else {
+		deleteReferenceFinding(r.Model, id, ReferencedResourceNotFound)
+	}
 }
