@@ -206,9 +206,14 @@ func convertNamespaceToContext(ns *corev1.Namespace, clusterContextID uuid.UUID)
 	ctx.SetDisplayName(ns.Name)
 	ctx.SetDescription("Kubernetes namespace " + ns.Name)
 	ctx.SetContextTypeById(sensor.K8sNamespaceContextTypeID)
-	if ns.Name != "kube-system" && clusterContextID != uuid.Nil {
+
+	// Check for explicit context-parent annotation (non-cluster relationships).
+	if parentID := annotationUUID(ns.Annotations, AnnotationContextParent); parentID != uuid.Nil {
+		ctx.SetParentById(parentID)
+	} else if ns.Name != "kube-system" && clusterContextID != uuid.Nil {
 		ctx.SetParentById(clusterContextID)
 	}
+
 	applyAnnotations(ctx.GetAnnotations(), ns.Annotations)
 	return ctx, id
 }
@@ -221,7 +226,14 @@ func componentInstanceFromMeta(obj client.Object) (component.ComponentInstance, 
 	ci := component.NewComponentInstance(uid)
 	ci.SetDisplayName(obj.GetName())
 	applyAnnotations(ci.GetAnnotations(), obj.GetAnnotations())
-	if siID := annotationUUID(obj.GetAnnotations(), AnnotationSystemInstanceID); siID != uuid.Nil {
+	annotations := obj.GetAnnotations()
+	// New annotation takes precedence; fall back to legacy key.
+	if compID := annotationUUID(annotations, AnnotationComponentReference); compID != uuid.Nil {
+		ci.SetComponentRef(&component.ComponentRef{ComponentId: compID})
+	} else if compID := annotationUUID(annotations, AnnotationComponentID); compID != uuid.Nil {
+		ci.SetComponentRef(&component.ComponentRef{ComponentId: compID})
+	}
+	if siID := annotationUUID(annotations, AnnotationSystemInstanceID); siID != uuid.Nil {
 		ci.SetSystemInstance(&system.SystemInstanceRef{InstanceId: siID})
 	}
 	return ci, uid
@@ -236,7 +248,10 @@ func apiInstanceFromMeta(obj client.Object) (mdlapi.ApiInstance, uuid.UUID) {
 	ai.SetDisplayName(obj.GetName())
 	applyAnnotations(ai.GetAnnotations(), obj.GetAnnotations())
 	annotations := obj.GetAnnotations()
-	if apiID := annotationUUID(annotations, AnnotationAPIID); apiID != uuid.Nil {
+	// New annotation takes precedence; fall back to legacy key.
+	if apiID := annotationUUID(annotations, AnnotationAPIReference); apiID != uuid.Nil {
+		ai.SetApiRef(&mdlapi.ApiRef{ApiID: apiID})
+	} else if apiID := annotationUUID(annotations, AnnotationAPIID); apiID != uuid.Nil {
 		ai.SetApiRef(&mdlapi.ApiRef{ApiID: apiID})
 	}
 	if siID := annotationUUID(annotations, AnnotationSystemInstanceID); siID != uuid.Nil {

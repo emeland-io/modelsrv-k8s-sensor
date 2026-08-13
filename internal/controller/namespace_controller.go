@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logr "sigs.k8s.io/controller-runtime/pkg/log"
 
+	"go.emeland.io/modelsrv/pkg/events"
 	"go.emeland.io/modelsrv/pkg/model"
 	"go.emeland.io/modelsrv/pkg/model/common"
 )
@@ -75,6 +76,7 @@ func (r *NamespaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			}
 			id := r.Index.Delete(KindContext, req.Name)
 			if id != uuid.Nil {
+				deleteReferenceFinding(r.Model, id, ReferencedResourceNotFound)
 				err = r.Model.DeleteContextById(id)
 				if errors.Is(err, common.ErrContextNotFound) {
 					err = nil
@@ -107,6 +109,7 @@ func (r *NamespaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 	r.Index.Put(KindContext, req.Name, id)
+	r.reconcileContextParentFinding(id, ns)
 	r.RuleEval.run(ns)
 
 	return ctrl.Result{}, nil
@@ -117,4 +120,23 @@ func (r *NamespaceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.Namespace{}).
 		Complete(r)
+}
+
+// reconcileContextParentFinding checks the context-parent annotation and emits
+// or clears a ReferencedResourceNotFound finding. This annotation is optional,
+// so no MissingResourceReference is emitted when it is absent.
+func (r *NamespaceReconciler) reconcileContextParentFinding(id uuid.UUID, ns *corev1.Namespace) {
+	parentID := annotationUUID(ns.Annotations, AnnotationContextParent)
+	if parentID == uuid.Nil {
+		// Annotation not set -- no finding needed (it's optional).
+		deleteReferenceFinding(r.Model, id, ReferencedResourceNotFound)
+		return
+	}
+
+	// Annotation present: check if the referenced Context exists.
+	if r.Model.GetContextById(parentID) == nil {
+		upsertReferencedResourceNotFound(r.Model, id, events.ContextResource, parentID, events.ContextResource, ns.Name)
+	} else {
+		deleteReferenceFinding(r.Model, id, ReferencedResourceNotFound)
+	}
 }
