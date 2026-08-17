@@ -19,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"gitlab.com/emeland/k8s-model/internal/helm"
+	"go.emeland.io/modelsrv/pkg/events"
 	"go.emeland.io/modelsrv/pkg/model"
 	"go.emeland.io/modelsrv/pkg/model/common"
 	"go.emeland.io/modelsrv/pkg/model/system"
@@ -112,6 +113,9 @@ func (r *HelmReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		// Correlate resources deployed by this release to the SystemInstance.
 		r.correlateResources(resources, req.Namespace, id, log)
 
+		// Check system-reference annotation and emit findings.
+		r.reconcileSystemReferenceFindings(id, secret, releaseName)
+
 		log.Info("created SystemInstance for Helm release", "release", releaseName, "revision", revision, "id", id)
 		return ctrl.Result{}, nil
 	}
@@ -142,6 +146,9 @@ func (r *HelmReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 		// Remove all HelmOwner entries that pointed to this SystemInstance.
 		r.Index.DeleteHelmOwnersBySystemInstance(id)
+		// Clean up any reference findings for this resource.
+		deleteReferenceFinding(r.Model, id, ReferencedResourceNotFound)
+		deleteReferenceFinding(r.Model, id, MissingResourceReference)
 		delErr := r.Model.DeleteSystemInstanceById(id)
 		if delErr != nil && !errors.Is(delErr, common.ErrSystemInstanceNotFound) {
 			log.Error(delErr, "could not delete SystemInstance from model", "release", releaseName)
@@ -233,6 +240,30 @@ var helmKindToResourceKind = map[string]ResourceKind{
 	"CronJob":     KindComponentInstance,
 	"Service":     KindAPIInstance,
 	"Ingress":     KindAPIInstance,
+}
+
+// reconcileSystemReferenceFindings checks the system-reference annotation on
+// the Secret that backs a Helm release and emits or clears findings accordingly.
+func (r *HelmReleaseReconciler) reconcileSystemReferenceFindings(id uuid.UUID, secret *corev1.Secret, releaseName string) {
+	annotations := secret.GetAnnotations()
+	sysID := annotationUUID(annotations, AnnotationSystemReference)
+
+	if sysID == uuid.Nil {
+		// No reference annotation or empty value: emit MissingResourceReference.
+		deleteReferenceFinding(r.Model, id, ReferencedResourceNotFound)
+		upsertMissingResourceReference(r.Model, id, events.SystemInstanceResource, releaseName, AnnotationSystemReference)
+		return
+	}
+
+	// Annotation present: clear MissingResourceReference.
+	deleteReferenceFinding(r.Model, id, MissingResourceReference)
+
+	// Check if the referenced System exists in the local model.
+	if r.Model.GetSystemById(sysID) == nil {
+		upsertReferencedResourceNotFound(r.Model, id, events.SystemInstanceResource, sysID, events.SystemResource, releaseName)
+	} else {
+		deleteReferenceFinding(r.Model, id, ReferencedResourceNotFound)
+	}
 }
 
 // correlateResources links existing ComponentInstances and APIInstances

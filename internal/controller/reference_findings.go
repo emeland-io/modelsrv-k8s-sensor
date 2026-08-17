@@ -28,6 +28,11 @@ const (
 	// non-cluster parent relationships (e.g. application grouping). The
 	// namespace-to-cluster relationship is implied and does not need this annotation.
 	AnnotationContextParent = "emeland.io/k8s-sensor/context-parent"
+
+	// AnnotationSystemReference is the UUID of the EmELand System resource that
+	// a SystemInstance (Helm release) references. If this annotation is missing
+	// or empty, a MissingResourceReference finding is raised.
+	AnnotationSystemReference = "emeland.io/k8s-sensor/system-reference"
 )
 
 // Finding kinds matching the definitions in modelsrv PR #153. The string values

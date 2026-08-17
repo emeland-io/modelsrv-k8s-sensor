@@ -19,6 +19,7 @@ import (
 	"go.emeland.io/modelsrv/pkg/backend"
 	mdlapi "go.emeland.io/modelsrv/pkg/model/api"
 	"go.emeland.io/modelsrv/pkg/model/component"
+	"go.emeland.io/modelsrv/pkg/model/system"
 )
 
 func TestCorrelateResources_SetsSystemInstanceRef(t *testing.T) {
@@ -329,4 +330,184 @@ func TestHelmReconcile_DeletesSystemInstance(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Nil(t, b.GetModel().GetSystemInstanceById(expectedID))
+}
+
+// --- System-reference finding tests ---
+
+func TestHelmReconcile_EmitsMissingSystemReference(t *testing.T) {
+	ctx := t.Context()
+	b, err := backend.New()
+	require.NoError(t, err)
+	idx := NewNameIndex()
+
+	rel := &helm.Release{
+		Name: "no-sys-ref", Namespace: "ns", Version: 1,
+		Info:     helm.Info{Status: "deployed"},
+		Chart:    helm.Chart{Metadata: helm.ChartMetadata{Name: "chart", Version: "1.0"}},
+		Manifest: "---\nkind: Deployment\nmetadata:\n  name: app\n  namespace: ns\n",
+	}
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "sh.helm.release.v1.no-sys-ref.v1",
+			Namespace: "ns",
+			// No system-reference annotation
+		},
+		Type: "helm.sh/release.v1",
+		Data: map[string][]byte{"release": encodeRelease(t, rel)},
+	}
+
+	fakeClient := helmTestFakeClient(t, *secret)
+	r := &HelmReleaseReconciler{Client: fakeClient, Scheme: nil, Model: b.GetModel(), Index: idx}
+
+	nn := types.NamespacedName{Name: secret.Name, Namespace: "ns"}
+	_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+	require.NoError(t, err)
+
+	siID := uuid.NewSHA1(helmNamespaceUUID, []byte("ns/no-sys-ref"))
+	require.NotNil(t, b.GetModel().GetSystemInstanceById(siID))
+
+	// MissingResourceReference finding should be present.
+	fID := referenceFindingID(siID, MissingResourceReference)
+	f := b.GetModel().GetFindingById(fID)
+	require.NotNil(t, f, "expected MissingResourceReference finding")
+
+	// ReferencedResourceNotFound should NOT be present.
+	notFoundID := referenceFindingID(siID, ReferencedResourceNotFound)
+	assert.Nil(t, b.GetModel().GetFindingById(notFoundID))
+}
+
+func TestHelmReconcile_EmitsReferencedResourceNotFound(t *testing.T) {
+	ctx := t.Context()
+	b, err := backend.New()
+	require.NoError(t, err)
+	idx := NewNameIndex()
+
+	unknownSysID := uuid.New()
+
+	rel := &helm.Release{
+		Name: "bad-ref", Namespace: "ns", Version: 1,
+		Info:     helm.Info{Status: "deployed"},
+		Chart:    helm.Chart{Metadata: helm.ChartMetadata{Name: "chart", Version: "1.0"}},
+		Manifest: "---\nkind: Deployment\nmetadata:\n  name: app\n  namespace: ns\n",
+	}
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "sh.helm.release.v1.bad-ref.v1",
+			Namespace: "ns",
+			Annotations: map[string]string{
+				AnnotationSystemReference: unknownSysID.String(),
+			},
+		},
+		Type: "helm.sh/release.v1",
+		Data: map[string][]byte{"release": encodeRelease(t, rel)},
+	}
+
+	fakeClient := helmTestFakeClient(t, *secret)
+	r := &HelmReleaseReconciler{Client: fakeClient, Scheme: nil, Model: b.GetModel(), Index: idx}
+
+	nn := types.NamespacedName{Name: secret.Name, Namespace: "ns"}
+	_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+	require.NoError(t, err)
+
+	siID := uuid.NewSHA1(helmNamespaceUUID, []byte("ns/bad-ref"))
+	require.NotNil(t, b.GetModel().GetSystemInstanceById(siID))
+
+	// ReferencedResourceNotFound finding should be present.
+	fID := referenceFindingID(siID, ReferencedResourceNotFound)
+	f := b.GetModel().GetFindingById(fID)
+	require.NotNil(t, f, "expected ReferencedResourceNotFound finding")
+
+	// MissingResourceReference should NOT be present.
+	missingID := referenceFindingID(siID, MissingResourceReference)
+	assert.Nil(t, b.GetModel().GetFindingById(missingID))
+}
+
+func TestHelmReconcile_ClearsFindingsWhenSystemExists(t *testing.T) {
+	ctx := t.Context()
+	b, err := backend.New()
+	require.NoError(t, err)
+	idx := NewNameIndex()
+
+	sysID := uuid.New()
+	// Pre-register the System in the model.
+	sys := system.NewSystem(sysID)
+	sys.SetDisplayName("Known System")
+	require.NoError(t, b.GetModel().AddSystem(sys))
+
+	rel := &helm.Release{
+		Name: "good-ref", Namespace: "ns", Version: 1,
+		Info:     helm.Info{Status: "deployed"},
+		Chart:    helm.Chart{Metadata: helm.ChartMetadata{Name: "chart", Version: "1.0"}},
+		Manifest: "---\nkind: Deployment\nmetadata:\n  name: app\n  namespace: ns\n",
+	}
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "sh.helm.release.v1.good-ref.v1",
+			Namespace: "ns",
+			Annotations: map[string]string{
+				AnnotationSystemReference: sysID.String(),
+			},
+		},
+		Type: "helm.sh/release.v1",
+		Data: map[string][]byte{"release": encodeRelease(t, rel)},
+	}
+
+	fakeClient := helmTestFakeClient(t, *secret)
+	r := &HelmReleaseReconciler{Client: fakeClient, Scheme: nil, Model: b.GetModel(), Index: idx}
+
+	nn := types.NamespacedName{Name: secret.Name, Namespace: "ns"}
+	_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+	require.NoError(t, err)
+
+	siID := uuid.NewSHA1(helmNamespaceUUID, []byte("ns/good-ref"))
+	require.NotNil(t, b.GetModel().GetSystemInstanceById(siID))
+
+	// No findings should exist.
+	missingID := referenceFindingID(siID, MissingResourceReference)
+	assert.Nil(t, b.GetModel().GetFindingById(missingID))
+	notFoundID := referenceFindingID(siID, ReferencedResourceNotFound)
+	assert.Nil(t, b.GetModel().GetFindingById(notFoundID))
+}
+
+func TestHelmReconcile_DeleteClearsFinding(t *testing.T) {
+	ctx := t.Context()
+	b, err := backend.New()
+	require.NoError(t, err)
+	idx := NewNameIndex()
+
+	rel := &helm.Release{
+		Name: "to-delete", Namespace: "ns", Version: 1,
+		Info:     helm.Info{Status: "deployed"},
+		Chart:    helm.Chart{Metadata: helm.ChartMetadata{Name: "c", Version: "1"}},
+		Manifest: "---\nkind: Deployment\nmetadata:\n  name: x\n  namespace: ns\n",
+	}
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "sh.helm.release.v1.to-delete.v1",
+			Namespace: "ns",
+			// No system-reference annotation -> MissingResourceReference finding
+		},
+		Type: "helm.sh/release.v1",
+		Data: map[string][]byte{"release": encodeRelease(t, rel)},
+	}
+
+	fakeClient := helmTestFakeClient(t, *secret)
+	r := &HelmReleaseReconciler{Client: fakeClient, Scheme: nil, Model: b.GetModel(), Index: idx}
+
+	nn := types.NamespacedName{Name: secret.Name, Namespace: "ns"}
+	_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+	require.NoError(t, err)
+
+	siID := uuid.NewSHA1(helmNamespaceUUID, []byte("ns/to-delete"))
+	fID := referenceFindingID(siID, MissingResourceReference)
+	require.NotNil(t, b.GetModel().GetFindingById(fID), "finding should exist after create")
+
+	// Delete: reconcile with the secret gone
+	fakeClient = helmTestFakeClient(t)
+	r.Client = fakeClient
+	_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+	require.NoError(t, err)
+
+	// Finding should be cleaned up.
+	assert.Nil(t, b.GetModel().GetFindingById(fID), "finding should be removed after delete")
 }
