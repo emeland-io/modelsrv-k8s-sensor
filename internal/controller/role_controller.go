@@ -42,9 +42,10 @@ var MissingRoleSpecAnnotationFindingTypeID = uuid.MustParse("f47ac10b-58cc-4372-
 // Instantiated once per K8s kind (Role, ClusterRole).
 type RoleReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Model  model.Model
-	Index  *NameIndex
+	Scheme    *runtime.Scheme
+	Model     model.Model
+	Index     *NameIndex
+	Whitelist *RBACWhitelist
 
 	prototype          client.Object
 	kind               string
@@ -52,12 +53,13 @@ type RoleReconciler struct {
 }
 
 // NewRoleReconciler creates a reconciler for a Role or ClusterRole kind.
-func NewRoleReconciler(c client.Client, scheme *runtime.Scheme, m model.Model, idx *NameIndex, prototype client.Object, kind string) *RoleReconciler {
+func NewRoleReconciler(c client.Client, scheme *runtime.Scheme, m model.Model, idx *NameIndex, prototype client.Object, kind string, wl *RBACWhitelist) *RoleReconciler {
 	return &RoleReconciler{
 		Client:    c,
 		Scheme:    scheme,
 		Model:     m,
 		Index:     idx,
+		Whitelist: wl,
 		prototype: prototype,
 		kind:      kind,
 	}
@@ -126,6 +128,12 @@ func (r *RoleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 // reconcileRoleSpecFinding creates or removes a finding based on whether the
 // RoleSpec annotation is present.
 func (r *RoleReconciler) reconcileRoleSpecFinding(roleID uuid.UUID, obj client.Object) {
+	// Skip finding creation for whitelisted resources.
+	if r.Whitelist.IsWhitelisted(r.kind, obj.GetName()) {
+		_ = r.Model.DeleteFindingById(roleSpecFindingID(roleID))
+		return
+	}
+
 	specID := annotationUUID(obj.GetAnnotations(), AnnotationRoleSpecID)
 	findingID := roleSpecFindingID(roleID)
 

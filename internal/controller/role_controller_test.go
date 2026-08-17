@@ -58,7 +58,7 @@ var _ = Describe("Role Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			idx := NewNameIndex()
 
-			r := NewRoleReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.Role{}, "Role")
+			r := NewRoleReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.Role{}, "Role", nil)
 
 			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
 			Expect(err).NotTo(HaveOccurred())
@@ -95,7 +95,7 @@ var _ = Describe("Role Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			idx := NewNameIndex()
 
-			r := NewRoleReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.Role{}, "Role")
+			r := NewRoleReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.Role{}, "Role", nil)
 
 			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
 			Expect(err).NotTo(HaveOccurred())
@@ -124,7 +124,7 @@ var _ = Describe("Role Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			idx := NewNameIndex()
 
-			r := NewRoleReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.Role{}, "Role")
+			r := NewRoleReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.Role{}, "Role", nil)
 
 			// Reconcile create.
 			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
@@ -174,7 +174,7 @@ var _ = Describe("Role Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			idx := NewNameIndex()
 
-			r := NewRoleReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.ClusterRole{}, "ClusterRole")
+			r := NewRoleReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.ClusterRole{}, "ClusterRole", nil)
 
 			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
 			Expect(err).NotTo(HaveOccurred())
@@ -221,7 +221,7 @@ var _ = Describe("Role Controller", func() {
 			idx := NewNameIndex()
 
 			// Reconcile the ClusterRole first.
-			roleReconciler := NewRoleReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.ClusterRole{}, "ClusterRole")
+			roleReconciler := NewRoleReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.ClusterRole{}, "ClusterRole", nil)
 			_, err = roleReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
 			Expect(err).NotTo(HaveOccurred())
 
@@ -230,7 +230,7 @@ var _ = Describe("Role Controller", func() {
 
 			// Now reconcile the ClusterRoleBinding - it should resolve the role ref.
 			crbNN := types.NamespacedName{Name: "test-crb"}
-			bindingReconciler := NewRoleBindingReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.ClusterRoleBinding{}, "ClusterRoleBinding")
+			bindingReconciler := NewRoleBindingReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.ClusterRoleBinding{}, "ClusterRoleBinding", nil)
 			_, err = bindingReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: crbNN})
 			Expect(err).NotTo(HaveOccurred())
 

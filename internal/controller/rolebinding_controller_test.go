@@ -64,7 +64,7 @@ var _ = Describe("RoleBinding Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			idx := NewNameIndex()
 
-			r := NewRoleBindingReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.RoleBinding{}, "RoleBinding")
+			r := NewRoleBindingReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.RoleBinding{}, "RoleBinding", nil)
 
 			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
 			Expect(err).NotTo(HaveOccurred())
@@ -112,7 +112,7 @@ var _ = Describe("RoleBinding Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			idx := NewNameIndex()
 
-			r := NewRoleBindingReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.RoleBinding{}, "RoleBinding")
+			r := NewRoleBindingReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.RoleBinding{}, "RoleBinding", nil)
 
 			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
 			Expect(err).NotTo(HaveOccurred())
@@ -149,7 +149,7 @@ var _ = Describe("RoleBinding Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			idx := NewNameIndex()
 
-			r := NewRoleBindingReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.RoleBinding{}, "RoleBinding")
+			r := NewRoleBindingReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.RoleBinding{}, "RoleBinding", nil)
 
 			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
 			Expect(err).NotTo(HaveOccurred())
@@ -191,7 +191,7 @@ var _ = Describe("RoleBinding Controller", func() {
 			// Pre-populate the index as if the Role controller already reconciled it.
 			idx.Put(KindRole, bindingNamespace+"/indexed-role", roleID)
 
-			r := NewRoleBindingReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.RoleBinding{}, "RoleBinding")
+			r := NewRoleBindingReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.RoleBinding{}, "RoleBinding", nil)
 
 			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
 			Expect(err).NotTo(HaveOccurred())
@@ -224,7 +224,7 @@ var _ = Describe("RoleBinding Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			idx := NewNameIndex()
 
-			r := NewRoleBindingReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.RoleBinding{}, "RoleBinding")
+			r := NewRoleBindingReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.RoleBinding{}, "RoleBinding", nil)
 
 			// Reconcile create.
 			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
@@ -274,7 +274,7 @@ var _ = Describe("RoleBinding Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			idx := NewNameIndex()
 
-			r := NewRoleBindingReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.ClusterRoleBinding{}, "ClusterRoleBinding")
+			r := NewRoleBindingReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.ClusterRoleBinding{}, "ClusterRoleBinding", nil)
 
 			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
 			Expect(err).NotTo(HaveOccurred())
@@ -338,8 +338,8 @@ var _ = Describe("RoleBinding Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			idx := NewNameIndex()
 
-			bindingReconciler := NewRoleBindingReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.RoleBinding{}, "RoleBinding")
-			roleReconciler := NewRoleReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.Role{}, "Role")
+			bindingReconciler := NewRoleBindingReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.RoleBinding{}, "RoleBinding", nil)
+			roleReconciler := NewRoleReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.Role{}, "Role", nil)
 			roleReconciler.SetBindingReconciler(bindingReconciler)
 
 			// Reconcile the binding BEFORE the role exists in the index.

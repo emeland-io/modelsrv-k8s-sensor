@@ -1,0 +1,33 @@
+# Example RBAC whitelist configuration for modelsrv-k8s-sensor.
+#
+# Resources matching the patterns below will not generate findings for
+# missing emeland.io/k8s-sensor-role-spec-id or
+# emeland.io/k8s-sensor-subject-id annotations.
+#
+# Patterns use Go's filepath.Match glob syntax:
+#   *      matches any sequence of non-separator characters
+#   ?      matches any single non-separator character
+#   [...]  matches any character in the bracket set
+#
+# Pass this file via --rbac-whitelist flag or RBAC_WHITELIST env var.
+
+roles:
+  - "system:*"
+
+clusterRoles:
+  - "system:*"
+  - "kubeadm:*"
+  - "calico-*"
+  - "admin"
+  - "cluster-admin"
+  - "edit"
+  - "view"
+
+roleBindings:
+  - "system:*"
+
+clusterRoleBindings:
+  - "system:*"
+  - "kubeadm:*"
+  - "calico-*"
+  - "cluster-admin"
