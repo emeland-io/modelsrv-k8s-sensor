@@ -47,9 +47,10 @@ var MissingSubjectAnnotationFindingTypeID = uuid.MustParse("f47ac10b-58cc-4372-a
 // RoleBindingReconciler maps K8s RoleBinding and ClusterRoleBinding to EmELand Binding.
 type RoleBindingReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Model  model.Model
-	Index  *NameIndex
+	Scheme    *runtime.Scheme
+	Model     model.Model
+	Index     *NameIndex
+	Whitelist *RBACWhitelist
 
 	prototype client.Object
 	kind      string
@@ -60,12 +61,13 @@ type RoleBindingReconciler struct {
 }
 
 // NewRoleBindingReconciler creates a reconciler for a RoleBinding or ClusterRoleBinding kind.
-func NewRoleBindingReconciler(c client.Client, scheme *runtime.Scheme, m model.Model, idx *NameIndex, prototype client.Object, kind string) *RoleBindingReconciler {
+func NewRoleBindingReconciler(c client.Client, scheme *runtime.Scheme, m model.Model, idx *NameIndex, prototype client.Object, kind string, wl *RBACWhitelist) *RoleBindingReconciler {
 	return &RoleBindingReconciler{
 		Client:    c,
 		Scheme:    scheme,
 		Model:     m,
 		Index:     idx,
+		Whitelist: wl,
 		prototype: prototype,
 		kind:      kind,
 		requeue:   make(chan event.GenericEvent, 64),
@@ -151,6 +153,12 @@ func (r *RoleBindingReconciler) extractRoleBindingFields(obj client.Object) (str
 // reconcileSubjectFinding creates or removes a finding based on whether the
 // subject annotation is present.
 func (r *RoleBindingReconciler) reconcileSubjectFinding(bindingID uuid.UUID, obj client.Object) {
+	// Skip finding creation for whitelisted resources.
+	if r.Whitelist.IsWhitelisted(r.kind, obj.GetName()) {
+		_ = r.Model.DeleteFindingById(subjectFindingID(bindingID))
+		return
+	}
+
 	subjectID := annotationUUID(obj.GetAnnotations(), AnnotationSubjectID)
 	findingID := subjectFindingID(bindingID)
 

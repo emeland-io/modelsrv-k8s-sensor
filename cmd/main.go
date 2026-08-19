@@ -78,6 +78,7 @@ func main() {
 	var allowInboundPush bool
 	var helmReleaseScanning bool
 	var subscriberURLs string
+	var rbacWhitelistPath string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -99,6 +100,8 @@ func main() {
 	flag.StringVar(&subscriberURLs, "subscriber-urls", envOrDefault("SUBSCRIBER_URLS", ""),
 		"Comma-separated downstream modelsrv base API URLs to register as replication subscribers "+
 			"(e.g. http://host:8080/api).")
+	flag.StringVar(&rbacWhitelistPath, "rbac-whitelist", envOrDefault("RBAC_WHITELIST", ""),
+		"Path to a YAML file containing name patterns for RBAC resources that should not generate findings.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -158,6 +161,8 @@ func main() {
 	nameIndex := controller.NewNameIndex()
 	ruleRepo := controller.NewRuleRepo()
 	evaluator := controller.NewEvaluator(emModel)
+
+	rbacWhitelist := mustLoadRBACWhitelist(rbacWhitelistPath)
 
 	sensorID, err := sensor.Register(emModel)
 	if err != nil {
@@ -281,7 +286,7 @@ func main() {
 	}
 	var bindingReconcilers = make([]*controller.RoleBindingReconciler, 0, len(rbacBindings))
 	for _, rb := range rbacBindings {
-		rbc := controller.NewRoleBindingReconciler(c, s, emModel, nameIndex, rb.prototype, rb.kind)
+		rbc := controller.NewRoleBindingReconciler(c, s, emModel, nameIndex, rb.prototype, rb.kind, rbacWhitelist)
 		if err = rbc.SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", rb.kind)
 			os.Exit(1)
@@ -297,7 +302,7 @@ func main() {
 		{"ClusterRole", &rbacv1.ClusterRole{}},
 	}
 	for _, rr := range rbacRoles {
-		rc := controller.NewRoleReconciler(c, s, emModel, nameIndex, rr.prototype, rr.kind)
+		rc := controller.NewRoleReconciler(c, s, emModel, nameIndex, rr.prototype, rr.kind, rbacWhitelist)
 		// Wire binding reconcilers so late-arriving roles can re-enqueue
 		// pending bindings. Routing picks the matching reconciler by scope.
 		for _, rbc := range bindingReconcilers {
@@ -401,4 +406,16 @@ func envOrDefault(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func mustLoadRBACWhitelist(path string) *controller.RBACWhitelist {
+	wl, err := controller.LoadRBACWhitelist(path)
+	if err != nil {
+		setupLog.Error(err, "unable to load RBAC whitelist", "path", path)
+		os.Exit(1)
+	}
+	if path != "" {
+		setupLog.Info("loaded RBAC whitelist", "path", path)
+	}
+	return wl
 }
