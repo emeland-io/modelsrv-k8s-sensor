@@ -30,6 +30,8 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	"k8s.io/client-go/discovery"
+
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -51,6 +53,7 @@ import (
 
 	structurev1alpha1 "gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
 	"gitlab.com/emeland/k8s-model/internal/controller"
+	"gitlab.com/emeland/k8s-model/internal/crdcheck"
 	"gitlab.com/emeland/k8s-model/internal/sensor"
 	// +kubebuilder:scaffold:imports
 )
@@ -168,6 +171,15 @@ func main() {
 	if err != nil {
 		setupLog.Error(err, "unable to register sensor identity")
 		os.Exit(1)
+	}
+
+	// Check which expected CRDs are available in the cluster.
+	discoveryClient, err := discovery.NewDiscoveryClientForConfig(mgr.GetConfig())
+	if err != nil {
+		setupLog.Error(err, "unable to create discovery client for CRD check")
+	} else {
+		crdResult := crdcheck.Check(context.Background(), discoveryClient, crdcheck.DefaultChecklist)
+		crdcheck.LogAndReport(setupLog, emModel, crdResult)
 	}
 
 	c := mgr.GetClient()
