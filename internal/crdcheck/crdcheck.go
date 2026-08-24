@@ -13,6 +13,86 @@ import (
 	"k8s.io/client-go/discovery"
 )
 
+// ParseChecklist parses a comma-separated list of CRD entries in the format
+// "group/version/resource". Each entry is looked up in DefaultChecklist for
+// metadata; unknown entries get a generic DisplayName and Category.
+func ParseChecklist(raw string) ([]CRDEntry, error) {
+	if raw == "" {
+		return nil, nil
+	}
+
+	// Build lookup from DefaultChecklist.
+	lookup := make(map[string]CRDEntry, len(DefaultChecklist))
+	for _, e := range DefaultChecklist {
+		lookup[e.String()] = e
+	}
+
+	var result []CRDEntry
+	start := 0
+	for i := 0; i <= len(raw); i++ {
+		if i == len(raw) || raw[i] == ',' {
+			token := trimSpace(raw[start:i])
+			if token != "" {
+				if known, ok := lookup[token]; ok {
+					result = append(result, known)
+				} else {
+					entry, err := parseCRDToken(token)
+					if err != nil {
+						return nil, fmt.Errorf("invalid CRD entry %q: %w", token, err)
+					}
+					result = append(result, entry)
+				}
+			}
+			start = i + 1
+		}
+	}
+	return result, nil
+}
+
+func parseCRDToken(token string) (CRDEntry, error) {
+	// Expected format: group/version/resource
+	var parts [3]string
+	slashes := 0
+	start := 0
+	for i := 0; i < len(token); i++ {
+		if token[i] == '/' {
+			if slashes >= 2 {
+				return CRDEntry{}, fmt.Errorf("expected format group/version/resource")
+			}
+			parts[slashes] = token[start:i]
+			slashes++
+			start = i + 1
+		}
+	}
+	if slashes != 2 {
+		return CRDEntry{}, fmt.Errorf("expected format group/version/resource")
+	}
+	parts[2] = token[start:]
+
+	if parts[0] == "" || parts[1] == "" || parts[2] == "" {
+		return CRDEntry{}, fmt.Errorf("expected format group/version/resource")
+	}
+
+	return CRDEntry{
+		Group:       parts[0],
+		Version:     parts[1],
+		Resource:    parts[2],
+		DisplayName: parts[2],
+		Category:    parts[0],
+	}, nil
+}
+
+func trimSpace(s string) string {
+	start, end := 0, len(s)
+	for start < end && (s[start] == ' ' || s[start] == '\t') {
+		start++
+	}
+	for end > start && (s[end-1] == ' ' || s[end-1] == '\t') {
+		end--
+	}
+	return s[start:end]
+}
+
 // CRDEntry describes one expected CRD to check for.
 type CRDEntry struct {
 	// Group is the API group (e.g. "cert-manager.io").
@@ -33,7 +113,7 @@ func (e CRDEntry) String() string {
 }
 
 // DefaultChecklist is the built-in set of CRDs the sensor expects to find.
-// Operators can override or extend this via --crd-checklist.
+// Operators can override this via --crd-checklist.
 var DefaultChecklist = []CRDEntry{
 	// EmELand native
 	{Group: "structure.emeland.io", Version: "v1alpha1", Resource: "systems", DisplayName: "EmELand System", Category: "EmELand"},
@@ -41,6 +121,9 @@ var DefaultChecklist = []CRDEntry{
 	{Group: "structure.emeland.io", Version: "v1alpha1", Resource: "components", DisplayName: "EmELand Component", Category: "EmELand"},
 	{Group: "structure.emeland.io", Version: "v1alpha1", Resource: "systeminstances", DisplayName: "EmELand SystemInstance", Category: "EmELand"},
 	{Group: "structure.emeland.io", Version: "v1alpha1", Resource: "findingrules", DisplayName: "EmELand FindingRule", Category: "EmELand"},
+
+	// Helm: not included because the sensor detects Helm releases via core/v1
+	// Secrets of type helm.sh/release.v1, not via a Helm-specific CRD.
 
 	// Cert-Manager
 	{Group: "cert-manager.io", Version: "v1", Resource: "certificates", DisplayName: "Certificate", Category: "CertManager"},
@@ -67,9 +150,11 @@ func Check(ctx context.Context, client discovery.DiscoveryInterface, checklist [
 	var result CheckResult
 
 	// Fetch all server resources once to avoid per-CRD round-trips.
+	// ServerGroupsAndResources can return partial results alongside an error
+	// (e.g. when some API groups are unreachable). We use whatever data we get.
 	_, resourceLists, err := client.ServerGroupsAndResources()
-	if err != nil {
-		// If discovery itself fails, treat all CRDs as missing.
+	if err != nil && resourceLists == nil {
+		// Total discovery failure with no usable data at all.
 		result.Missing = append(result.Missing, checklist...)
 		return result
 	}
