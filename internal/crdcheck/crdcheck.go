@@ -5,6 +5,7 @@ package crdcheck
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
@@ -12,86 +13,6 @@ import (
 	"go.emeland.io/modelsrv/pkg/model/finding"
 	"k8s.io/client-go/discovery"
 )
-
-// ParseChecklist parses a comma-separated list of CRD entries in the format
-// "group/version/resource". Each entry is looked up in DefaultChecklist for
-// metadata; unknown entries get a generic DisplayName and Category.
-func ParseChecklist(raw string) ([]CRDEntry, error) {
-	if raw == "" {
-		return nil, nil
-	}
-
-	// Build lookup from DefaultChecklist.
-	lookup := make(map[string]CRDEntry, len(DefaultChecklist))
-	for _, e := range DefaultChecklist {
-		lookup[e.String()] = e
-	}
-
-	var result []CRDEntry
-	start := 0
-	for i := 0; i <= len(raw); i++ {
-		if i == len(raw) || raw[i] == ',' {
-			token := trimSpace(raw[start:i])
-			if token != "" {
-				if known, ok := lookup[token]; ok {
-					result = append(result, known)
-				} else {
-					entry, err := parseCRDToken(token)
-					if err != nil {
-						return nil, fmt.Errorf("invalid CRD entry %q: %w", token, err)
-					}
-					result = append(result, entry)
-				}
-			}
-			start = i + 1
-		}
-	}
-	return result, nil
-}
-
-func parseCRDToken(token string) (CRDEntry, error) {
-	// Expected format: group/version/resource
-	var parts [3]string
-	slashes := 0
-	start := 0
-	for i := 0; i < len(token); i++ {
-		if token[i] == '/' {
-			if slashes >= 2 {
-				return CRDEntry{}, fmt.Errorf("expected format group/version/resource")
-			}
-			parts[slashes] = token[start:i]
-			slashes++
-			start = i + 1
-		}
-	}
-	if slashes != 2 {
-		return CRDEntry{}, fmt.Errorf("expected format group/version/resource")
-	}
-	parts[2] = token[start:]
-
-	if parts[0] == "" || parts[1] == "" || parts[2] == "" {
-		return CRDEntry{}, fmt.Errorf("expected format group/version/resource")
-	}
-
-	return CRDEntry{
-		Group:       parts[0],
-		Version:     parts[1],
-		Resource:    parts[2],
-		DisplayName: parts[2],
-		Category:    parts[0],
-	}, nil
-}
-
-func trimSpace(s string) string {
-	start, end := 0, len(s)
-	for start < end && (s[start] == ' ' || s[start] == '\t') {
-		start++
-	}
-	for end > start && (s[end-1] == ' ' || s[end-1] == '\t') {
-		end--
-	}
-	return s[start:end]
-}
 
 // CRDEntry describes one expected CRD to check for.
 type CRDEntry struct {
@@ -138,10 +59,63 @@ var DefaultChecklist = []CRDEntry{
 	{Group: "grafana.integreatly.org", Version: "v1beta1", Resource: "grafanadashboards", DisplayName: "GrafanaDashboard", Category: "Grafana Operator"},
 }
 
+// ParseChecklist parses a comma-separated list of CRD entries in the format
+// "group/version/resource". Each entry is looked up in DefaultChecklist for
+// metadata; unknown entries get a generic DisplayName and Category.
+func ParseChecklist(raw string) ([]CRDEntry, error) {
+	if raw == "" {
+		return nil, nil
+	}
+
+	// Build lookup from DefaultChecklist.
+	lookup := make(map[string]CRDEntry, len(DefaultChecklist))
+	for _, e := range DefaultChecklist {
+		lookup[e.String()] = e
+	}
+
+	var result []CRDEntry
+	for _, token := range strings.Split(raw, ",") {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			continue
+		}
+		if known, ok := lookup[token]; ok {
+			result = append(result, known)
+		} else {
+			entry, err := parseCRDToken(token)
+			if err != nil {
+				return nil, fmt.Errorf("invalid CRD entry %q: %w", token, err)
+			}
+			result = append(result, entry)
+		}
+	}
+	return result, nil
+}
+
+func parseCRDToken(token string) (CRDEntry, error) {
+	// Expected format: group/version/resource
+	parts := strings.SplitN(token, "/", 4)
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
+		return CRDEntry{}, fmt.Errorf("expected format group/version/resource")
+	}
+
+	return CRDEntry{
+		Group:       parts[0],
+		Version:     parts[1],
+		Resource:    parts[2],
+		DisplayName: parts[2],
+		Category:    parts[0],
+	}, nil
+}
+
 // CheckResult holds the outcome of a CRD availability check.
 type CheckResult struct {
 	Available []CRDEntry
 	Missing   []CRDEntry
+	// DiscoveryErr is set when discovery returned partial results alongside
+	// an error (e.g. some API groups were unreachable). The check still
+	// proceeds with whatever data was returned, but callers should log this.
+	DiscoveryErr error
 }
 
 // Check probes the cluster's discovery API for each entry in checklist.
@@ -155,8 +129,13 @@ func Check(ctx context.Context, client discovery.DiscoveryInterface, checklist [
 	_, resourceLists, err := client.ServerGroupsAndResources()
 	if err != nil && resourceLists == nil {
 		// Total discovery failure with no usable data at all.
+		result.DiscoveryErr = err
 		result.Missing = append(result.Missing, checklist...)
 		return result
+	}
+	if err != nil {
+		// Partial failure: some groups unreachable, but we got data for others.
+		result.DiscoveryErr = err
 	}
 
 	available := make(map[string]struct{})
@@ -182,9 +161,13 @@ func Check(ctx context.Context, client discovery.DiscoveryInterface, checklist [
 	return result
 }
 
-// LogAndReport logs missing CRDs at WARN and creates Findings in the model.
+// LogAndReport logs missing CRDs and creates Findings in the model.
 // It does not return an error; missing CRDs are informational, not fatal.
 func LogAndReport(log logr.Logger, m model.Model, result CheckResult) {
+	if result.DiscoveryErr != nil {
+		log.Error(result.DiscoveryErr, "CRD discovery returned partial results, some groups may be unreachable")
+	}
+
 	if len(result.Missing) == 0 {
 		log.Info("all expected CRDs available", "count", len(result.Available))
 		return
