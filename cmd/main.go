@@ -30,6 +30,8 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	"k8s.io/client-go/discovery"
+
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -48,9 +50,11 @@ import (
 
 	"go.emeland.io/modelsrv/pkg/backend"
 	"go.emeland.io/modelsrv/pkg/endpoint"
+	"go.emeland.io/modelsrv/pkg/model"
 
 	structurev1alpha1 "gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
 	"gitlab.com/emeland/k8s-model/internal/controller"
+	"gitlab.com/emeland/k8s-model/internal/crdcheck"
 	"gitlab.com/emeland/k8s-model/internal/sensor"
 	// +kubebuilder:scaffold:imports
 )
@@ -79,6 +83,7 @@ func main() {
 	var helmReleaseScanning bool
 	var subscriberURLs string
 	var rbacWhitelistPath string
+	var crdChecklistRaw string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -102,6 +107,9 @@ func main() {
 			"(e.g. http://host:8080/api).")
 	flag.StringVar(&rbacWhitelistPath, "rbac-whitelist", envOrDefault("RBAC_WHITELIST", ""),
 		"Path to a YAML file containing name patterns for RBAC resources that should not generate findings.")
+	flag.StringVar(&crdChecklistRaw, "crd-checklist", envOrDefault("CRD_CHECKLIST", ""),
+		"Comma-separated list of CRDs to check (format: group/version/resource). "+
+			"Overrides the built-in default checklist when set.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -169,6 +177,9 @@ func main() {
 		setupLog.Error(err, "unable to register sensor identity")
 		os.Exit(1)
 	}
+
+	// Check which expected CRDs are available in the cluster.
+	runCRDCheck(mgr, emModel, crdChecklistRaw)
 
 	c := mgr.GetClient()
 	s := mgr.GetScheme()
@@ -375,6 +386,25 @@ func main() {
 	if err := apiServer.Shutdown(shutdownCtx); err != nil {
 		setupLog.Error(err, "problem shutting down modelsrv API")
 	}
+}
+
+func runCRDCheck(mgr ctrl.Manager, emModel model.Model, crdChecklistRaw string) {
+	checklist := crdcheck.DefaultChecklist
+	if crdChecklistRaw != "" {
+		parsed, err := crdcheck.ParseChecklist(crdChecklistRaw)
+		if err != nil {
+			setupLog.Error(err, "unable to parse --crd-checklist")
+			os.Exit(1)
+		}
+		checklist = parsed
+	}
+	discoveryClient, err := discovery.NewDiscoveryClientForConfig(mgr.GetConfig())
+	if err != nil {
+		setupLog.Error(err, "unable to create discovery client for CRD check")
+		return
+	}
+	crdResult := crdcheck.Check(context.Background(), discoveryClient, checklist)
+	crdcheck.LogAndReport(setupLog, emModel, crdResult)
 }
 
 func startAPIServer(b backend.Backend, addr string, allowInboundPush bool) (*http.Server, string, error) {
