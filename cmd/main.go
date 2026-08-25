@@ -50,6 +50,7 @@ import (
 
 	"go.emeland.io/modelsrv/pkg/backend"
 	"go.emeland.io/modelsrv/pkg/endpoint"
+	"go.emeland.io/modelsrv/pkg/model"
 
 	structurev1alpha1 "gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
 	"gitlab.com/emeland/k8s-model/internal/controller"
@@ -178,22 +179,7 @@ func main() {
 	}
 
 	// Check which expected CRDs are available in the cluster.
-	crdChecklist := crdcheck.DefaultChecklist
-	if crdChecklistRaw != "" {
-		parsed, err := crdcheck.ParseChecklist(crdChecklistRaw)
-		if err != nil {
-			setupLog.Error(err, "unable to parse --crd-checklist")
-			os.Exit(1)
-		}
-		crdChecklist = parsed
-	}
-	discoveryClient, err := discovery.NewDiscoveryClientForConfig(mgr.GetConfig())
-	if err != nil {
-		setupLog.Error(err, "unable to create discovery client for CRD check")
-	} else {
-		crdResult := crdcheck.Check(context.Background(), discoveryClient, crdChecklist)
-		crdcheck.LogAndReport(setupLog, emModel, crdResult)
-	}
+	runCRDCheck(mgr, emModel, crdChecklistRaw)
 
 	c := mgr.GetClient()
 	s := mgr.GetScheme()
@@ -400,6 +386,25 @@ func main() {
 	if err := apiServer.Shutdown(shutdownCtx); err != nil {
 		setupLog.Error(err, "problem shutting down modelsrv API")
 	}
+}
+
+func runCRDCheck(mgr ctrl.Manager, emModel model.Model, crdChecklistRaw string) {
+	checklist := crdcheck.DefaultChecklist
+	if crdChecklistRaw != "" {
+		parsed, err := crdcheck.ParseChecklist(crdChecklistRaw)
+		if err != nil {
+			setupLog.Error(err, "unable to parse --crd-checklist")
+			os.Exit(1)
+		}
+		checklist = parsed
+	}
+	discoveryClient, err := discovery.NewDiscoveryClientForConfig(mgr.GetConfig())
+	if err != nil {
+		setupLog.Error(err, "unable to create discovery client for CRD check")
+		return
+	}
+	crdResult := crdcheck.Check(context.Background(), discoveryClient, checklist)
+	crdcheck.LogAndReport(setupLog, emModel, crdResult)
 }
 
 func startAPIServer(b backend.Backend, addr string, allowInboundPush bool) (*http.Server, string, error) {
