@@ -186,15 +186,15 @@ func LogAndReport(log logr.Logger, m model.Model, result CheckResult) {
 	)
 
 	// Create findings for missing CRDs.
-	ensureCRDMissingFindingType(m)
+	ensureCRDMissingFindingType(log, m)
 	for _, entry := range result.Missing {
-		createCRDMissingFinding(m, entry)
+		createCRDMissingFinding(log, m, entry)
 	}
 }
 
 const crdMissingFindingKind = "CRDNotAvailable"
 
-func ensureCRDMissingFindingType(m model.Model) {
+func ensureCRDMissingFindingType(log logr.Logger, m model.Model) {
 	kind := finding.FindingKind(crdMissingFindingKind)
 	id := finding.TypeIDForKind(kind)
 	if ft := m.GetFindingTypeById(id); ft != nil {
@@ -203,10 +203,12 @@ func ensureCRDMissingFindingType(m model.Model) {
 	ft := finding.NewFindingType(id)
 	ft.SetDisplayName(crdMissingFindingKind)
 	ft.SetDescription("A CRD expected by the k8s sensor is not installed in the cluster.")
-	_ = m.AddFindingType(ft)
+	if err := m.AddFindingType(ft); err != nil {
+		log.Error(err, "unable to add CRDNotAvailable finding type")
+	}
 }
 
-func createCRDMissingFinding(m model.Model, entry CRDEntry) {
+func createCRDMissingFinding(log logr.Logger, m model.Model, entry CRDEntry) {
 	kind := finding.FindingKind(crdMissingFindingKind)
 	typeID := finding.TypeIDForKind(kind)
 
@@ -221,5 +223,7 @@ func createCRDMissingFinding(m model.Model, entry CRDEntry) {
 			"The sensor cannot watch resources of this type.",
 		entry.String(), entry.Category,
 	))
-	_ = m.AddFinding(f)
+	if err := m.AddFinding(f); err != nil {
+		log.Error(err, "unable to add CRD missing finding", "crd", entry.String())
+	}
 }
