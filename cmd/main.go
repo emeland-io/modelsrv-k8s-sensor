@@ -278,14 +278,7 @@ func main() {
 	// and RoleBinding/ClusterRoleBinding to EmELand Binding.
 
 	// Register well-known FindingTypes so they exist even with no active findings.
-	if err = controller.RegisterRBACFindingTypes(emModel); err != nil {
-		setupLog.Error(err, "unable to register RBAC finding types")
-		os.Exit(1)
-	}
-	if err = controller.RegisterReferenceFindingTypes(emModel); err != nil {
-		setupLog.Error(err, "unable to register reference finding types")
-		os.Exit(1)
-	}
+	mustRegisterFindingTypes(emModel)
 
 	// Create binding reconcilers first so we can wire them into the role reconcilers.
 	rbacBindings := []struct {
@@ -335,6 +328,8 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "Namespace")
 		os.Exit(1)
 	}
+
+	mustSetupImageScan(mgr, c, s, emModel, nameIndex)
 
 	if err = controller.NewFindingRuleWatcher(mgr, ruleRepo); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "FindingRule")
@@ -405,6 +400,39 @@ func runCRDCheck(mgr ctrl.Manager, emModel model.Model, crdChecklistRaw string) 
 	}
 	crdResult := crdcheck.Check(context.Background(), discoveryClient, checklist)
 	crdcheck.LogAndReport(setupLog, emModel, crdResult)
+}
+
+func mustRegisterFindingTypes(emModel model.Model) {
+	if err := controller.RegisterRBACFindingTypes(emModel); err != nil {
+		setupLog.Error(err, "unable to register RBAC finding types")
+		os.Exit(1)
+	}
+	if err := controller.RegisterReferenceFindingTypes(emModel); err != nil {
+		setupLog.Error(err, "unable to register reference finding types")
+		os.Exit(1)
+	}
+	if err := controller.RegisterImageFindingTypes(emModel); err != nil {
+		setupLog.Error(err, "unable to register image finding types")
+		os.Exit(1)
+	}
+}
+
+func mustSetupImageScan(
+	mgr ctrl.Manager,
+	c client.Client,
+	s *runtime.Scheme,
+	emModel model.Model,
+	nameIndex *controller.NameIndex,
+) {
+	if err := (&controller.ImageScanReconciler{
+		Client: c,
+		Scheme: s,
+		Model:  emModel,
+		Index:  nameIndex,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ImageScan")
+		os.Exit(1)
+	}
 }
 
 func startAPIServer(b backend.Backend, addr string, allowInboundPush bool) (*http.Server, string, error) {
