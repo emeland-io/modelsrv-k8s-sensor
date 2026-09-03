@@ -2,6 +2,7 @@
     - ""
   resources:
     - namespaces
+    - pods
     - secrets
     - services
   verbs:
@@ -31,6 +32,17 @@
     - networking.k8s.io
   resources:
     - ingresses
+  verbs:
+    - get
+    - list
+    - watch
+- apiGroups:
+    - rbac.authorization.k8s.io
+  resources:
+    - clusterrolebindings
+    - clusterroles
+    - rolebindings
+    - roles
   verbs:
     - get
     - list

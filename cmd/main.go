@@ -286,6 +286,10 @@ func main() {
 		setupLog.Error(err, "unable to register reference finding types")
 		os.Exit(1)
 	}
+	if err = controller.RegisterImageFindingTypes(emModel); err != nil {
+		setupLog.Error(err, "unable to register image finding types")
+		os.Exit(1)
+	}
 
 	// Create binding reconcilers first so we can wire them into the role reconcilers.
 	rbacBindings := []struct {
@@ -333,6 +337,16 @@ func main() {
 		RuleEval: controller.NewRuleEvaluation(ruleRepo, evaluator, "/namespaces"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Namespace")
+		os.Exit(1)
+	}
+
+	if err = (&controller.ImageScanReconciler{
+		Client: c,
+		Scheme: s,
+		Model:  emModel,
+		Index:  nameIndex,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ImageScan")
 		os.Exit(1)
 	}
 
