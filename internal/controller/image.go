@@ -21,9 +21,9 @@ const ArtifactInstanceLocationAnnotation = "emeland.io/p8-artifact-instance-loca
 // pullFailureReasons are container waiting reasons that indicate the image was
 // known (declared in the Pod spec) but not retrieved successfully.
 var pullFailureReasons = map[string]struct{}{
-	"ErrImagePull":      {},
-	"ImagePullBackOff":  {},
-	"InvalidImageName":  {},
+	"ErrImagePull":     {},
+	"ImagePullBackOff": {},
+	"InvalidImageName": {},
 }
 
 // sha256DigestRE matches a sha256 digest hex string, optionally prefixed.
@@ -59,6 +59,7 @@ type imageIdentity struct {
 //   - docker-pullable://repo/name@sha256:abc…
 //   - containerd://sha256:abc…
 //   - sha256:abc…
+//
 // Returns modelsrv form "SHA256:<hex>" or empty if no digest is found.
 func parseImageID(imageID string) string {
 	if imageID == "" {
@@ -89,22 +90,9 @@ func identityFromImage(imageRef, imageID string) imageIdentity {
 
 	if hash != "" {
 		hex := strings.TrimPrefix(hash, "SHA256:")
-		display := ref
-		if at := strings.LastIndex(ref, "@"); at >= 0 {
-			display = ref[:at] + "@sha256:" + hex
-		} else if ref != "" {
-			// Strip tag if present and attach digest for a stable display name.
-			base := ref
-			if i := strings.LastIndex(ref, ":"); i > strings.LastIndex(ref, "/") {
-				base = ref[:i]
-			}
-			display = base + "@sha256:" + hex
-		} else {
-			display = "sha256:" + hex
-		}
 		return imageIdentity{
 			key:         "sha256:" + hex,
-			displayName: display,
+			displayName: displayNameForDigest(ref, hex),
 			hash:        hash,
 		}
 	}
@@ -114,6 +102,21 @@ func identityFromImage(imageRef, imageID string) imageIdentity {
 		displayName: ref,
 		hash:        "",
 	}
+}
+
+// displayNameForDigest builds a stable display name from an image ref and digest hex.
+func displayNameForDigest(ref, hex string) string {
+	if at := strings.LastIndex(ref, "@"); at >= 0 {
+		return ref[:at] + "@sha256:" + hex
+	}
+	if ref != "" {
+		base := ref
+		if i := strings.LastIndex(ref, ":"); i > strings.LastIndex(ref, "/") {
+			base = ref[:i]
+		}
+		return base + "@sha256:" + hex
+	}
+	return "sha256:" + hex
 }
 
 // artifactIDForImage returns the deterministic UUID for a sensor-minted Artifact.
@@ -152,123 +155,9 @@ func containerPullFailed(cs corev1.ContainerStatus) bool {
 // collectImageObservations walks all Pods and aggregates per-image state.
 func collectImageObservations(pods []corev1.Pod) map[string]*imageObservation {
 	obs := make(map[string]*imageObservation)
-
-	ensure := func(id imageIdentity) *imageObservation {
-		o, ok := obs[id.key]
-		if !ok {
-			o = &imageObservation{
-				key:         id.key,
-				displayName: id.displayName,
-				hash:        id.hash,
-			}
-			obs[id.key] = o
-			return o
-		}
-		// Prefer a hash / digest-qualified display name when we learn one later.
-		if o.hash == "" && id.hash != "" {
-			o.hash = id.hash
-			o.displayName = id.displayName
-		}
-		return o
-	}
-
-	addLocation := func(o *imageObservation, loc string) {
-		if loc == "" {
-			return
-		}
-		for _, existing := range o.locations {
-			if existing == loc {
-				return
-			}
-		}
-		o.locations = append(o.locations, loc)
-	}
-
-	addFailingPod := func(o *imageObservation, podKey string) {
-		for _, existing := range o.failingPods {
-			if existing == podKey {
-				return
-			}
-		}
-		o.failingPods = append(o.failingPods, podKey)
-	}
-
 	for i := range pods {
-		pod := &pods[i]
-		podKey := pod.Namespace + "/" + pod.Name
-
-		// Spec: register declared images as known.
-		for _, c := range pod.Spec.Containers {
-			if c.Image == "" {
-				continue
-			}
-			_ = ensure(identityFromImage(c.Image, ""))
-		}
-		for _, c := range pod.Spec.InitContainers {
-			if c.Image == "" {
-				continue
-			}
-			_ = ensure(identityFromImage(c.Image, ""))
-		}
-		for _, c := range pod.Spec.EphemeralContainers {
-			if c.Image == "" {
-				continue
-			}
-			_ = ensure(identityFromImage(c.Image, ""))
-		}
-
-		processStatus := func(cs corev1.ContainerStatus) {
-			id := identityFromImage(cs.Image, cs.ImageID)
-			if id.key == "" {
-				return
-			}
-			o := ensure(id)
-			// When status reveals a digest, fold any earlier tag-only observation
-			// (keyed by the declared image ref) into this digest identity.
-			if id.hash != "" {
-				tagKey := normalizeImageRef(cs.Image)
-				if tagKey != "" && tagKey != id.key {
-					if prev, ok := obs[tagKey]; ok {
-						if prev.started {
-							o.started = true
-						}
-						if prev.pullFailed {
-							o.pullFailed = true
-						}
-						for _, loc := range prev.locations {
-							addLocation(o, loc)
-						}
-						for _, p := range prev.failingPods {
-							addFailingPod(o, p)
-						}
-						delete(obs, tagKey)
-					}
-				}
-			}
-			if containerStarted(cs) {
-				o.started = true
-				addLocation(o, "oci://"+o.displayName)
-				if pod.Spec.NodeName != "" {
-					addLocation(o, "node://"+pod.Spec.NodeName)
-				}
-			}
-			if containerPullFailed(cs) {
-				o.pullFailed = true
-				addFailingPod(o, podKey)
-			}
-		}
-
-		for _, cs := range pod.Status.ContainerStatuses {
-			processStatus(cs)
-		}
-		for _, cs := range pod.Status.InitContainerStatuses {
-			processStatus(cs)
-		}
-		for _, cs := range pod.Status.EphemeralContainerStatuses {
-			processStatus(cs)
-		}
+		observePodImages(obs, &pods[i])
 	}
-
 	// Pull failure only counts when the image never started anywhere.
 	for _, o := range obs {
 		if o.started {
@@ -276,8 +165,118 @@ func collectImageObservations(pods []corev1.Pod) map[string]*imageObservation {
 			o.failingPods = nil
 		}
 	}
-
 	return obs
+}
+
+func ensureObservation(obs map[string]*imageObservation, id imageIdentity) *imageObservation {
+	o, ok := obs[id.key]
+	if !ok {
+		o = &imageObservation{
+			key:         id.key,
+			displayName: id.displayName,
+			hash:        id.hash,
+		}
+		obs[id.key] = o
+		return o
+	}
+	// Prefer a hash / digest-qualified display name when we learn one later.
+	if o.hash == "" && id.hash != "" {
+		o.hash = id.hash
+		o.displayName = id.displayName
+	}
+	return o
+}
+
+func addUnique(list *[]string, value string) {
+	if value == "" {
+		return
+	}
+	for _, existing := range *list {
+		if existing == value {
+			return
+		}
+	}
+	*list = append(*list, value)
+}
+
+func mergeTagObservation(obs map[string]*imageObservation, digestObs *imageObservation, tagKey string) {
+	if tagKey == "" || tagKey == digestObs.key {
+		return
+	}
+	prev, ok := obs[tagKey]
+	if !ok {
+		return
+	}
+	if prev.started {
+		digestObs.started = true
+	}
+	if prev.pullFailed {
+		digestObs.pullFailed = true
+	}
+	for _, loc := range prev.locations {
+		addUnique(&digestObs.locations, loc)
+	}
+	for _, p := range prev.failingPods {
+		addUnique(&digestObs.failingPods, p)
+	}
+	delete(obs, tagKey)
+}
+
+func registerDeclaredImages(obs map[string]*imageObservation, images []string) {
+	for _, image := range images {
+		if image == "" {
+			continue
+		}
+		_ = ensureObservation(obs, identityFromImage(image, ""))
+	}
+}
+
+func observeContainerStatus(obs map[string]*imageObservation, pod *corev1.Pod, podKey string, cs corev1.ContainerStatus) {
+	id := identityFromImage(cs.Image, cs.ImageID)
+	if id.key == "" {
+		return
+	}
+	o := ensureObservation(obs, id)
+	if id.hash != "" {
+		mergeTagObservation(obs, o, normalizeImageRef(cs.Image))
+	}
+	if containerStarted(cs) {
+		o.started = true
+		addUnique(&o.locations, "oci://"+o.displayName)
+		if pod.Spec.NodeName != "" {
+			addUnique(&o.locations, "node://"+pod.Spec.NodeName)
+		}
+	}
+	if containerPullFailed(cs) {
+		o.pullFailed = true
+		addUnique(&o.failingPods, podKey)
+	}
+}
+
+func observePodImages(obs map[string]*imageObservation, pod *corev1.Pod) {
+	podKey := pod.Namespace + "/" + pod.Name
+
+	declared := make([]string, 0, len(pod.Spec.Containers)+len(pod.Spec.InitContainers)+len(pod.Spec.EphemeralContainers))
+	for _, c := range pod.Spec.Containers {
+		declared = append(declared, c.Image)
+	}
+	for _, c := range pod.Spec.InitContainers {
+		declared = append(declared, c.Image)
+	}
+	for _, c := range pod.Spec.EphemeralContainers {
+		declared = append(declared, c.Image)
+	}
+	registerDeclaredImages(obs, declared)
+
+	for _, cs := range pod.Status.ContainerStatuses {
+		observeContainerStatus(obs, pod, podKey, cs)
+	}
+	for _, cs := range pod.Status.InitContainerStatuses {
+		observeContainerStatus(obs, pod, podKey, cs)
+	}
+	for _, cs := range pod.Status.EphemeralContainerStatuses {
+		observeContainerStatus(obs, pod, podKey, cs)
+	}
 }
 
 // locationAnnotationValue encodes locations as a JSON list for the well-known annotation.

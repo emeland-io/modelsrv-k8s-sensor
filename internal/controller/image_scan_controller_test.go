@@ -114,7 +114,7 @@ var _ = Describe("ImageScanReconciler", func() {
 
 	It("deduplicates the same digest across two Pods into one Artifact and Instance", func() {
 		pod1 := runningPod("app-a", "default", "nginx:1.25", "docker-pullable://nginx@sha256:"+digest)
-		pod2 := runningPod("app-b", "other", "nginx:1.25", "containerd://sha256:"+digest)
+		pod2 := runningPod("app-b", "other", "nginx:1.26", "containerd://sha256:"+digest)
 		b, err := backend.New()
 		Expect(err).NotTo(HaveOccurred())
 		idx := NewNameIndex()
@@ -142,7 +142,7 @@ var _ = Describe("ImageScanReconciler", func() {
 		existing.SetDisplayName("catalog-nginx")
 		existing.SetHash("SHA256:" + digest)
 
-		pod := runningPod("app", "default", "nginx:1.25", "docker-pullable://nginx@sha256:"+digest)
+		pod := runningPod("app", "default", "library/nginx:1.25", "docker-pullable://nginx@sha256:"+digest)
 		b, err := backend.New()
 		Expect(err).NotTo(HaveOccurred())
 		Expect(b.GetModel().AddArtifact(existing)).To(Succeed())
@@ -216,7 +216,7 @@ var _ = Describe("ImageScanReconciler", func() {
 		Expect(b.GetModel().GetFindingById(referenceFindingID(failArtID, ImageNotRetrieved))).NotTo(BeNil())
 
 		// Simulate recovery: replace the pod with a running one that has a digest.
-		running := runningPod("app", "default", "nginx:1.25", "docker-pullable://nginx@sha256:"+digest)
+		running := runningPod("app", "default", "nginx:stable", "docker-pullable://nginx@sha256:"+digest)
 		r.Client = newFakeClient(running)
 		reconcileCluster(r)
 
@@ -230,7 +230,7 @@ var _ = Describe("ImageScanReconciler", func() {
 	})
 
 	It("removes ArtifactInstance and sensor-minted Artifact when Pods disappear", func() {
-		pod := runningPod("app", "default", "nginx:1.25", "docker-pullable://nginx@sha256:"+digest)
+		pod := runningPod("app", "default", "nginx:latest", "docker-pullable://nginx@sha256:"+digest)
 		b, err := backend.New()
 		Expect(err).NotTo(HaveOccurred())
 		idx := NewNameIndex()
