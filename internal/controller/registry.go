@@ -19,6 +19,8 @@ const (
 	KindComponentInstance ResourceKind = "ComponentInstance"
 	KindRole              ResourceKind = "Role"
 	KindBinding           ResourceKind = "Binding"
+	KindArtifact          ResourceKind = "Artifact"
+	KindArtifactInstance  ResourceKind = "ArtifactInstance"
 )
 
 // NameIndex maps K8s resource names (namespace/name or bare name for cluster-scoped)
@@ -92,6 +94,21 @@ func (idx *NameIndex) Delete(kind ResourceKind, name string) uuid.UUID {
 	}
 	delete(m, name)
 	return id
+}
+
+// Keys returns a snapshot of all name keys currently indexed for the given kind.
+func (idx *NameIndex) Keys(kind ResourceKind) []string {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+	m, ok := idx.names[kind]
+	if !ok {
+		return nil
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 // SetHelmOwner records that a resource (identified by kind + namespace/name) is

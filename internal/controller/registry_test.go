@@ -26,6 +26,22 @@ func TestNameIndexUnknownKind(t *testing.T) {
 	assert.Equal(t, uuid.Nil, idx.Delete(KindAPI, "missing"))
 }
 
+func TestNameIndexKeys(t *testing.T) {
+	idx := NewNameIndex()
+	assert.Empty(t, idx.Keys(KindArtifact))
+
+	id1 := uuid.New()
+	id2 := uuid.New()
+	idx.Put(KindArtifact, "sha256:aaa", id1)
+	idx.Put(KindArtifact, "nginx:latest", id2)
+	idx.Put(KindArtifactInstance, "sha256:aaa", uuid.New())
+
+	keys := idx.Keys(KindArtifact)
+	assert.Len(t, keys, 2)
+	assert.ElementsMatch(t, []string{"sha256:aaa", "nginx:latest"}, keys)
+	assert.Len(t, idx.Keys(KindArtifactInstance), 1)
+}
+
 func TestNameIndexConcurrent(t *testing.T) {
 	idx := NewNameIndex()
 	var wg sync.WaitGroup
