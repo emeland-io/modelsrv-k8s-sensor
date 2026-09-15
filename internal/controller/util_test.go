@@ -323,3 +323,45 @@ func TestParseSystemRef_PartialVersionRef(t *testing.T) {
 	assert.Nil(t, parseSystemRef("", &v1alpha1.VersionRef{Name: "sys"}))
 	assert.Nil(t, parseSystemRef("", &v1alpha1.VersionRef{Version: "1.0"}))
 }
+
+// --- bindingHasValidSubject ---
+
+func TestBindingHasValidSubject_Nil(t *testing.T) {
+	assert.False(t, bindingHasValidSubject(nil))
+}
+
+func TestBindingHasValidSubject_MissingAnnotation(t *testing.T) {
+	obj := &corev1.Service{ObjectMeta: metav1.ObjectMeta{
+		Name: "rb",
+		UID:  types.UID(uuid.New().String()),
+	}}
+	b, id := bindingFromRBAC(obj, "role", "Group", NewNameIndex())
+	assert.NotEqual(t, uuid.Nil, id)
+	assert.False(t, bindingHasValidSubject(b))
+}
+
+func TestBindingHasValidSubject_Group(t *testing.T) {
+	subjectID := uuid.New()
+	obj := &corev1.Service{ObjectMeta: metav1.ObjectMeta{
+		Name: "rb",
+		UID:  types.UID(uuid.New().String()),
+		Annotations: map[string]string{
+			AnnotationSubjectID: subjectID.String(),
+		},
+	}}
+	b, _ := bindingFromRBAC(obj, "role", "Group", NewNameIndex())
+	assert.True(t, bindingHasValidSubject(b))
+}
+
+func TestBindingHasValidSubject_Identity(t *testing.T) {
+	subjectID := uuid.New()
+	obj := &corev1.Service{ObjectMeta: metav1.ObjectMeta{
+		Name: "rb",
+		UID:  types.UID(uuid.New().String()),
+		Annotations: map[string]string{
+			AnnotationSubjectID: subjectID.String(),
+		},
+	}}
+	b, _ := bindingFromRBAC(obj, "role", "User", NewNameIndex())
+	assert.True(t, bindingHasValidSubject(b))
+}

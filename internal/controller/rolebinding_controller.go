@@ -99,6 +99,26 @@ func (r *RoleBindingReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, nil
 		}
 
+		// Always index the K8s UID so findings and a later annotated
+		// reconcile can use a stable Binding id, even if we skip AddBinding.
+		r.Index.Put(KindBinding, req.NamespacedName.String(), id)
+
+		// Empty-subject Bindings fail replication decode (HTTP 500) and abort
+		// the snapshot, so do not store one until a Group/Identity annotation
+		// is present. Keep the missing-subject finding; drop any previously
+		// stored Binding so it cannot poison the stream.
+		if !bindingHasValidSubject(binding) {
+			if existing := r.Model.GetBindingById(id); existing != nil {
+				if delErr := r.Model.DeleteBinding(id); delErr != nil && !errors.Is(delErr, common.ErrBindingNotFound) {
+					log.Error(delErr, "could not remove empty-subject binding from model", "kind", r.kind, "name", req.NamespacedName)
+					return ctrl.Result{}, delErr
+				}
+			}
+			r.Index.RemovePendingBinding(roleIndexKey, req.NamespacedName.String())
+			r.reconcileSubjectFinding(id, obj)
+			return ctrl.Result{}, nil
+		}
+
 		// If the referenced Role is not in the index yet, record this binding
 		// as pending so the Role controller can trigger re-reconciliation later.
 		if r.Index.Get(KindRole, roleIndexKey) == uuid.Nil {
@@ -112,9 +132,7 @@ func (r *RoleBindingReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			log.Error(err, "could not add binding to model", "kind", r.kind)
 			return ctrl.Result{}, err
 		}
-		r.Index.Put(KindBinding, req.NamespacedName.String(), id)
 
-		// Issue a finding if the subject annotation is missing.
 		r.reconcileSubjectFinding(id, obj)
 	} else if k8serrors.IsNotFound(err) {
 		id := r.Index.Delete(KindBinding, req.NamespacedName.String())

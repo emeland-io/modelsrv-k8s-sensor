@@ -318,6 +318,15 @@ func bindingFromRBAC(obj client.Object, roleIndexKey string, subjectKind string,
 	return b, uid
 }
 
+// bindingHasValidSubject reports whether b has exactly one of groupId or
+// identityId set. Bindings without a subject fail modelsrv replication decode.
+func bindingHasValidSubject(b iam.Binding) bool {
+	if b == nil {
+		return false
+	}
+	return b.GetSubject().EffectiveKind() != iam.SubjectNone
+}
+
 // firstSubjectKind returns the Kind of the first subject in a RoleBinding's
 // subjects list, or empty string if there are none.
 func firstSubjectKind(subjects []rbacv1.Subject) string {

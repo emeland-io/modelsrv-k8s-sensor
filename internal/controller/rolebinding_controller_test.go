@@ -156,11 +156,98 @@ var _ = Describe("RoleBinding Controller", func() {
 
 			bindingID := idx.Get(KindBinding, namespacedName.String())
 			Expect(bindingID).NotTo(Equal(uuid.Nil))
+			// Empty-subject Bindings must not enter the landscape: they fail
+			// replication decode and abort the snapshot.
+			Expect(b.GetModel().GetBindingById(bindingID)).To(BeNil())
 
 			findingID := subjectFindingID(bindingID)
 			f := b.GetModel().GetFindingById(findingID)
 			Expect(f).NotTo(BeNil())
 			Expect(f.GetFindingTypeId()).To(Equal(MissingSubjectAnnotationFindingTypeID))
+		})
+
+		It("should add the Binding once a subject annotation appears", func() {
+			uid := uuid.New()
+			rb := &rbacv1.RoleBinding{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      bindingName,
+					Namespace: bindingNamespace,
+					UID:       types.UID(uid.String()),
+				},
+				RoleRef: rbacv1.RoleRef{
+					APIGroup: "rbac.authorization.k8s.io",
+					Kind:     "Role",
+					Name:     "admin",
+				},
+				Subjects: []rbacv1.Subject{
+					{Kind: "Group", Name: "admins", APIGroup: "rbac.authorization.k8s.io"},
+				},
+			}
+			fc := newFakeClient(rb)
+			b, err := backend.New()
+			Expect(err).NotTo(HaveOccurred())
+			idx := NewNameIndex()
+
+			r := NewRoleBindingReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.RoleBinding{}, "RoleBinding", nil)
+
+			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(b.GetModel().GetBindingById(uid)).To(BeNil())
+
+			got := &rbacv1.RoleBinding{}
+			Expect(fc.Get(ctx, namespacedName, got)).To(Succeed())
+			got.Annotations = map[string]string{AnnotationSubjectID: subjectID.String()}
+			Expect(fc.Update(ctx, got)).To(Succeed())
+
+			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			emBinding := b.GetModel().GetBindingById(uid)
+			Expect(emBinding).NotTo(BeNil())
+			Expect(emBinding.GetSubject().EffectiveKind()).To(Equal(iam.SubjectKindGroup))
+			Expect(b.GetModel().GetFindingById(subjectFindingID(uid))).To(BeNil())
+		})
+
+		It("should drop a previously stored Binding if the subject annotation is removed", func() {
+			uid := uuid.New()
+			rb := &rbacv1.RoleBinding{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      bindingName,
+					Namespace: bindingNamespace,
+					UID:       types.UID(uid.String()),
+					Annotations: map[string]string{
+						AnnotationSubjectID: subjectID.String(),
+					},
+				},
+				RoleRef: rbacv1.RoleRef{
+					APIGroup: "rbac.authorization.k8s.io",
+					Kind:     "Role",
+					Name:     "admin",
+				},
+				Subjects: []rbacv1.Subject{
+					{Kind: "Group", Name: "admins", APIGroup: "rbac.authorization.k8s.io"},
+				},
+			}
+			fc := newFakeClient(rb)
+			b, err := backend.New()
+			Expect(err).NotTo(HaveOccurred())
+			idx := NewNameIndex()
+
+			r := NewRoleBindingReconciler(fc, testScheme, b.GetModel(), idx, &rbacv1.RoleBinding{}, "RoleBinding", nil)
+
+			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(b.GetModel().GetBindingById(uid)).NotTo(BeNil())
+
+			got := &rbacv1.RoleBinding{}
+			Expect(fc.Get(ctx, namespacedName, got)).To(Succeed())
+			got.Annotations = nil
+			Expect(fc.Update(ctx, got)).To(Succeed())
+
+			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(b.GetModel().GetBindingById(uid)).To(BeNil())
+			Expect(b.GetModel().GetFindingById(subjectFindingID(uid))).NotTo(BeNil())
 		})
 
 		It("should resolve role reference through the name index", func() {
