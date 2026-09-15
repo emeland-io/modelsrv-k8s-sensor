@@ -30,8 +30,7 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	"k8s.io/client-go/discovery"
-
+	"github.com/google/uuid"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -39,6 +38,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/discovery"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -179,7 +179,9 @@ func main() {
 	}
 
 	// Check which expected CRDs are available in the cluster.
-	runCRDCheck(mgr, emModel, crdChecklistRaw)
+	// Findings are emitted later: on the cluster Context once kube-system is
+	// modeled, or on the sensor Node if that namespace never appears.
+	crdReporter := runCRDCheck(mgr, emModel, crdChecklistRaw, sensorID.NodeID)
 
 	c := mgr.GetClient()
 	s := mgr.GetScheme()
@@ -319,13 +321,18 @@ func main() {
 	}
 
 	if err = (&controller.NamespaceReconciler{
-		Client:   c,
-		Scheme:   s,
-		Model:    emModel,
-		Index:    nameIndex,
-		RuleEval: controller.NewRuleEvaluation(ruleRepo, evaluator, "/namespaces"),
+		Client:      c,
+		Scheme:      s,
+		Model:       emModel,
+		Index:       nameIndex,
+		RuleEval:    controller.NewRuleEvaluation(ruleRepo, evaluator, "/namespaces"),
+		CRDReporter: crdReporter,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Namespace")
+		os.Exit(1)
+	}
+	if err = controller.SetupCRDMissingFallback(mgr, crdReporter); err != nil {
+		setupLog.Error(err, "unable to set up CRD missing fallback")
 		os.Exit(1)
 	}
 
@@ -383,7 +390,7 @@ func main() {
 	}
 }
 
-func runCRDCheck(mgr ctrl.Manager, emModel model.Model, crdChecklistRaw string) {
+func runCRDCheck(mgr ctrl.Manager, emModel model.Model, crdChecklistRaw string, nodeID uuid.UUID) *crdcheck.Reporter {
 	checklist := crdcheck.DefaultChecklist
 	if crdChecklistRaw != "" {
 		parsed, err := crdcheck.ParseChecklist(crdChecklistRaw)
@@ -396,10 +403,11 @@ func runCRDCheck(mgr ctrl.Manager, emModel model.Model, crdChecklistRaw string) 
 	discoveryClient, err := discovery.NewDiscoveryClientForConfig(mgr.GetConfig())
 	if err != nil {
 		setupLog.Error(err, "unable to create discovery client for CRD check")
-		return
+		return nil
 	}
 	crdResult := crdcheck.Check(context.Background(), discoveryClient, checklist)
-	crdcheck.LogAndReport(setupLog, emModel, crdResult)
+	crdcheck.Log(setupLog, crdResult)
+	return crdcheck.NewReporter(setupLog, emModel, crdResult, nodeID)
 }
 
 func mustRegisterFindingTypes(emModel model.Model) {
