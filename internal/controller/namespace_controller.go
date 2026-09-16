@@ -34,6 +34,8 @@ import (
 	"go.emeland.io/modelsrv/pkg/events"
 	"go.emeland.io/modelsrv/pkg/model"
 	"go.emeland.io/modelsrv/pkg/model/common"
+
+	"gitlab.com/emeland/k8s-model/internal/crdcheck"
 )
 
 // NamespaceReconciler reconciles Namespace objects into EmELand Context entities.
@@ -41,10 +43,11 @@ import (
 // become child contexts with kube-system as parent.
 type NamespaceReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Model    model.Model
-	Index    *NameIndex
-	RuleEval *RuleEvaluation
+	Scheme      *runtime.Scheme
+	Model       model.Model
+	Index       *NameIndex
+	RuleEval    *RuleEvaluation
+	CRDReporter *crdcheck.Reporter
 
 	mu               sync.RWMutex
 	clusterContextID uuid.UUID
@@ -73,6 +76,7 @@ func (r *NamespaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if k8serrors.IsNotFound(err) {
 			if req.Name == "kube-system" {
 				r.setClusterContextID(uuid.Nil)
+				r.CRDReporter.ClearContext()
 			}
 			id := r.Index.Delete(KindContext, req.Name)
 			if id != uuid.Nil {
@@ -109,6 +113,9 @@ func (r *NamespaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 	r.Index.Put(KindContext, req.Name, id)
+	if ns.Name == "kube-system" {
+		r.CRDReporter.ReportWithContext(id)
+	}
 	r.reconcileContextParentFinding(id, ns)
 	r.RuleEval.run(ns)
 
@@ -120,6 +127,39 @@ func (r *NamespaceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.Namespace{}).
 		Complete(r)
+}
+
+// crdMissingFallback attaches CRDNotAvailable findings to the sensor Node
+// when kube-system is not in the cluster (so there is no cluster Context).
+type crdMissingFallback struct {
+	Client   client.Client
+	Reporter *crdcheck.Reporter
+}
+
+// Start runs after the manager cache has synced. If kube-system exists,
+// NamespaceReconciler will attach findings to the cluster Context; this
+// only fires the Node fallback when that namespace is absent.
+func (f *crdMissingFallback) Start(ctx context.Context) error {
+	if f == nil || f.Reporter == nil {
+		return nil
+	}
+	ns := &corev1.Namespace{}
+	if err := f.Client.Get(ctx, client.ObjectKey{Name: "kube-system"}, ns); err != nil {
+		f.Reporter.ReportFallback()
+	}
+	return nil
+}
+
+// SetupCRDMissingFallback registers a runnable that falls back to the sensor
+// Node when kube-system never appears. No-op when reporter is nil.
+func SetupCRDMissingFallback(mgr ctrl.Manager, reporter *crdcheck.Reporter) error {
+	if reporter == nil {
+		return nil
+	}
+	return mgr.Add(&crdMissingFallback{
+		Client:   mgr.GetClient(),
+		Reporter: reporter,
+	})
 }
 
 // reconcileContextParentFinding checks the context-parent annotation and emits

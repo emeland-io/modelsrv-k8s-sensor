@@ -18,7 +18,9 @@ package controller
 
 import (
 	"context"
+	"strings"
 
+	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -28,7 +30,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"go.emeland.io/modelsrv/pkg/backend"
+	"go.emeland.io/modelsrv/pkg/events"
 	mdlctx "go.emeland.io/modelsrv/pkg/model/context"
+	"go.emeland.io/modelsrv/pkg/model/finding"
+
+	"gitlab.com/emeland/k8s-model/internal/crdcheck"
 )
 
 var _ = Describe("NamespaceReconciler", func() {
@@ -185,4 +191,149 @@ var _ = Describe("NamespaceReconciler", func() {
 		}
 		Expect(matched).To(Equal(2))
 	})
+
+	It("should attach CRD-missing findings to the cluster context", func() {
+		ctx := context.Background()
+		ksUID := uuid.New()
+		ksNS := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "kube-system",
+				UID:  types.UID(ksUID.String()),
+			},
+		}
+
+		b, err := backend.New()
+		Expect(err).NotTo(HaveOccurred())
+		idx := NewNameIndex()
+		fakeClient := newFakeClient(ksNS)
+
+		result := crdcheck.CheckResult{
+			Missing: []crdcheck.CRDEntry{
+				{Group: "cert-manager.io", Version: "v1", Resource: "certificates", DisplayName: "Certificate", Category: "CertManager"},
+			},
+		}
+		nodeID := uuid.New()
+		reporter := crdcheck.NewReporter(logr.Discard(), b.GetModel(), result, nodeID)
+
+		r := &NamespaceReconciler{
+			Client:      fakeClient,
+			Scheme:      testScheme,
+			Model:       b.GetModel(),
+			Index:       idx,
+			CRDReporter: reporter,
+		}
+		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: "kube-system"}})
+		Expect(err).NotTo(HaveOccurred())
+
+		findings, err := b.GetModel().GetFindings()
+		Expect(err).NotTo(HaveOccurred())
+		f := crdNotAvailableFinding(findings)
+		Expect(f).NotTo(BeNil())
+		Expect(f.GetDisplayName()).To(ContainSubstring("Certificate"))
+		Expect(f.GetResources()).To(HaveLen(1))
+		Expect(f.GetResources()[0].ResourceId).To(Equal(ksUID))
+		Expect(f.GetResources()[0].ResourceType).To(Equal(events.ContextResource))
+	})
+
+	It("should fall back to the sensor Node when kube-system is absent", func() {
+		ctx := context.Background()
+		b, err := backend.New()
+		Expect(err).NotTo(HaveOccurred())
+
+		result := crdcheck.CheckResult{
+			Missing: []crdcheck.CRDEntry{
+				{Group: "cert-manager.io", Version: "v1", Resource: "certificates", DisplayName: "Certificate", Category: "CertManager"},
+			},
+		}
+		nodeID := uuid.New()
+		reporter := crdcheck.NewReporter(logr.Discard(), b.GetModel(), result, nodeID)
+
+		fallback := &crdMissingFallback{Client: newFakeClient(), Reporter: reporter}
+		Expect(fallback.Start(ctx)).To(Succeed())
+
+		findings, err := b.GetModel().GetFindings()
+		Expect(err).NotTo(HaveOccurred())
+		f := crdNotAvailableFinding(findings)
+		Expect(f).NotTo(BeNil())
+		Expect(f.GetResources()).To(HaveLen(1))
+		Expect(f.GetResources()[0].ResourceId).To(Equal(nodeID))
+		Expect(f.GetResources()[0].ResourceType).To(Equal(events.NodeResource))
+	})
+
+	It("should not fall back when kube-system exists", func() {
+		ctx := context.Background()
+		ksNS := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{Name: "kube-system", UID: types.UID(uuid.New().String())},
+		}
+		b, err := backend.New()
+		Expect(err).NotTo(HaveOccurred())
+
+		result := crdcheck.CheckResult{
+			Missing: []crdcheck.CRDEntry{
+				{Group: "cert-manager.io", Version: "v1", Resource: "certificates", DisplayName: "Certificate", Category: "CertManager"},
+			},
+		}
+		reporter := crdcheck.NewReporter(logr.Discard(), b.GetModel(), result, uuid.New())
+
+		fallback := &crdMissingFallback{Client: newFakeClient(ksNS), Reporter: reporter}
+		Expect(fallback.Start(ctx)).To(Succeed())
+
+		findings, err := b.GetModel().GetFindings()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(crdNotAvailableFinding(findings)).To(BeNil())
+	})
+
+	It("should move CRD-missing findings to the sensor Node when kube-system is deleted", func() {
+		ctx := context.Background()
+		ksUID := uuid.New()
+		ksNS := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "kube-system",
+				UID:  types.UID(ksUID.String()),
+			},
+		}
+
+		b, err := backend.New()
+		Expect(err).NotTo(HaveOccurred())
+		idx := NewNameIndex()
+
+		result := crdcheck.CheckResult{
+			Missing: []crdcheck.CRDEntry{
+				{Group: "cert-manager.io", Version: "v1", Resource: "certificates", DisplayName: "Certificate", Category: "CertManager"},
+			},
+		}
+		nodeID := uuid.New()
+		reporter := crdcheck.NewReporter(logr.Discard(), b.GetModel(), result, nodeID)
+
+		r := &NamespaceReconciler{
+			Client:      newFakeClient(ksNS),
+			Scheme:      testScheme,
+			Model:       b.GetModel(),
+			Index:       idx,
+			CRDReporter: reporter,
+		}
+		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: "kube-system"}})
+		Expect(err).NotTo(HaveOccurred())
+
+		r.Client = newFakeClient()
+		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: "kube-system"}})
+		Expect(err).NotTo(HaveOccurred())
+
+		findings, err := b.GetModel().GetFindings()
+		Expect(err).NotTo(HaveOccurred())
+		f := crdNotAvailableFinding(findings)
+		Expect(f).NotTo(BeNil())
+		Expect(f.GetResources()).To(HaveLen(1))
+		Expect(f.GetResources()[0].ResourceId).To(Equal(nodeID))
+		Expect(f.GetResources()[0].ResourceType).To(Equal(events.NodeResource))
+	})
 })
+
+func crdNotAvailableFinding(findings []finding.Finding) finding.Finding {
+	for _, f := range findings {
+		if strings.HasPrefix(f.GetDisplayName(), "CRD not available:") {
+			return f
+		}
+	}
+	return nil
+}

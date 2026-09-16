@@ -6,10 +6,12 @@ import (
 	"testing"
 
 	"github.com/go-logr/logr"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.emeland.io/modelsrv/pkg/events"
 	"go.emeland.io/modelsrv/pkg/model"
+	"go.emeland.io/modelsrv/pkg/model/common"
 	"go.emeland.io/modelsrv/pkg/model/finding"
 
 	"gitlab.com/emeland/k8s-model/internal/crdcheck"
@@ -161,8 +163,13 @@ func TestLogAndReport_CreatesFindingsForMissing(t *testing.T) {
 			{Group: "monitoring.coreos.com", Version: "v1", Resource: "servicemonitors", DisplayName: "ServiceMonitor", Category: "Prometheus"},
 		},
 	}
+	subject := common.ResourceRef{
+		ResourceId:   uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		ResourceType: events.ContextResource,
+	}
 
-	crdcheck.LogAndReport(logr.Discard(), m, result)
+	crdcheck.Log(logr.Discard(), result)
+	crdcheck.Report(logr.Discard(), m, result, subject)
 
 	// Should have the finding type registered.
 	typeID := finding.TypeIDForKind("CRDNotAvailable")
@@ -170,11 +177,32 @@ func TestLogAndReport_CreatesFindingsForMissing(t *testing.T) {
 	require.NotNil(t, ft)
 	assert.Equal(t, "CRDNotAvailable", ft.GetDisplayName())
 
-	// Should have one finding.
+	// Should have one finding attached to the cluster Context.
 	findings, err := m.GetFindings()
 	require.NoError(t, err)
 	assert.Len(t, findings, 1)
 	assert.Contains(t, findings[0].GetDisplayName(), "ServiceMonitor")
+	require.Len(t, findings[0].GetResources(), 1)
+	assert.Equal(t, subject.ResourceId, findings[0].GetResources()[0].ResourceId)
+	assert.Equal(t, events.ContextResource, findings[0].GetResources()[0].ResourceType)
+}
+
+func TestReport_SkipsWhenSubjectEmpty(t *testing.T) {
+	sink := events.NewDummySink()
+	m, err := model.NewModel(sink)
+	require.NoError(t, err)
+
+	result := crdcheck.CheckResult{
+		Missing: []crdcheck.CRDEntry{
+			{Group: "monitoring.coreos.com", Version: "v1", Resource: "servicemonitors", DisplayName: "ServiceMonitor", Category: "Prometheus"},
+		},
+	}
+
+	crdcheck.Report(logr.Discard(), m, result, common.ResourceRef{})
+
+	findings, err := m.GetFindings()
+	require.NoError(t, err)
+	assert.Empty(t, findings)
 }
 
 func TestLogAndReport_NoFindingsWhenAllAvailable(t *testing.T) {
@@ -187,8 +215,13 @@ func TestLogAndReport_NoFindingsWhenAllAvailable(t *testing.T) {
 			{Group: "cert-manager.io", Version: "v1", Resource: "certificates", DisplayName: "Certificate", Category: "CertManager"},
 		},
 	}
+	subject := common.ResourceRef{
+		ResourceId:   uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		ResourceType: events.ContextResource,
+	}
 
-	crdcheck.LogAndReport(logr.Discard(), m, result)
+	crdcheck.Log(logr.Discard(), result)
+	crdcheck.Report(logr.Discard(), m, result, subject)
 
 	findings, err := m.GetFindings()
 	require.NoError(t, err)
@@ -205,14 +238,105 @@ func TestLogAndReport_DeterministicFindingID(t *testing.T) {
 			{Group: "monitoring.coreos.com", Version: "v1", Resource: "servicemonitors", DisplayName: "ServiceMonitor", Category: "Prometheus"},
 		},
 	}
+	subject := common.ResourceRef{
+		ResourceId:   uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		ResourceType: events.ContextResource,
+	}
 
 	// Run twice - should upsert, not duplicate.
-	crdcheck.LogAndReport(logr.Discard(), m, result)
-	crdcheck.LogAndReport(logr.Discard(), m, result)
+	crdcheck.Report(logr.Discard(), m, result, subject)
+	crdcheck.Report(logr.Discard(), m, result, subject)
 
 	findings, err := m.GetFindings()
 	require.NoError(t, err)
 	assert.Len(t, findings, 1)
+}
+
+func TestReporter_ContextWinsOverFallback(t *testing.T) {
+	sink := events.NewDummySink()
+	m, err := model.NewModel(sink)
+	require.NoError(t, err)
+
+	result := crdcheck.CheckResult{
+		Missing: []crdcheck.CRDEntry{
+			{Group: "cert-manager.io", Version: "v1", Resource: "certificates", DisplayName: "Certificate", Category: "CertManager"},
+		},
+	}
+	nodeID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	clusterID := uuid.MustParse("33333333-3333-3333-3333-333333333333")
+
+	reporter := crdcheck.NewReporter(logr.Discard(), m, result, nodeID)
+	reporter.ReportFallback()
+	reporter.ReportWithContext(clusterID)
+
+	findings, err := m.GetFindings()
+	require.NoError(t, err)
+	require.Len(t, findings, 1)
+	require.Len(t, findings[0].GetResources(), 1)
+	assert.Equal(t, clusterID, findings[0].GetResources()[0].ResourceId)
+	assert.Equal(t, events.ContextResource, findings[0].GetResources()[0].ResourceType)
+
+	// Fallback after context must not move the finding back onto the Node.
+	reporter.ReportFallback()
+	findings, err = m.GetFindings()
+	require.NoError(t, err)
+	require.Len(t, findings, 1)
+	assert.Equal(t, clusterID, findings[0].GetResources()[0].ResourceId)
+}
+
+func TestReporter_FallbackWhenNoContext(t *testing.T) {
+	sink := events.NewDummySink()
+	m, err := model.NewModel(sink)
+	require.NoError(t, err)
+
+	result := crdcheck.CheckResult{
+		Missing: []crdcheck.CRDEntry{
+			{Group: "cert-manager.io", Version: "v1", Resource: "certificates", DisplayName: "Certificate", Category: "CertManager"},
+		},
+	}
+	nodeID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+
+	reporter := crdcheck.NewReporter(logr.Discard(), m, result, nodeID)
+	reporter.ReportFallback()
+
+	findings, err := m.GetFindings()
+	require.NoError(t, err)
+	require.Len(t, findings, 1)
+	require.Len(t, findings[0].GetResources(), 1)
+	assert.Equal(t, nodeID, findings[0].GetResources()[0].ResourceId)
+	assert.Equal(t, events.NodeResource, findings[0].GetResources()[0].ResourceType)
+}
+
+func TestReporter_ClearContextRevertsToFallback(t *testing.T) {
+	sink := events.NewDummySink()
+	m, err := model.NewModel(sink)
+	require.NoError(t, err)
+
+	result := crdcheck.CheckResult{
+		Missing: []crdcheck.CRDEntry{
+			{Group: "cert-manager.io", Version: "v1", Resource: "certificates", DisplayName: "Certificate", Category: "CertManager"},
+		},
+	}
+	nodeID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	clusterID := uuid.MustParse("33333333-3333-3333-3333-333333333333")
+
+	reporter := crdcheck.NewReporter(logr.Discard(), m, result, nodeID)
+	reporter.ReportWithContext(clusterID)
+	reporter.ClearContext()
+
+	findings, err := m.GetFindings()
+	require.NoError(t, err)
+	require.Len(t, findings, 1)
+	require.Len(t, findings[0].GetResources(), 1)
+	assert.Equal(t, nodeID, findings[0].GetResources()[0].ResourceId)
+	assert.Equal(t, events.NodeResource, findings[0].GetResources()[0].ResourceType)
+}
+
+func TestReporter_NilReceiver(t *testing.T) {
+	var reporter *crdcheck.Reporter
+	reporter.ReportWithContext(uuid.New())
+	reporter.ReportFallback()
+	reporter.ClearContext()
 }
 
 func TestParseChecklist_Valid(t *testing.T) {

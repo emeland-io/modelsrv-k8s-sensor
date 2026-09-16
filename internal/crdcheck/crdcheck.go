@@ -6,10 +6,13 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
+	"go.emeland.io/modelsrv/pkg/events"
 	"go.emeland.io/modelsrv/pkg/model"
+	"go.emeland.io/modelsrv/pkg/model/common"
 	"go.emeland.io/modelsrv/pkg/model/finding"
 	"k8s.io/client-go/discovery"
 )
@@ -161,9 +164,8 @@ func Check(ctx context.Context, client discovery.DiscoveryInterface, checklist [
 	return result
 }
 
-// LogAndReport logs missing CRDs and creates Findings in the model.
-// It does not return an error; missing CRDs are informational, not fatal.
-func LogAndReport(log logr.Logger, m model.Model, result CheckResult) {
+// Log writes the CRD availability outcome. Missing CRDs are informational, not fatal.
+func Log(log logr.Logger, result CheckResult) {
 	if result.DiscoveryErr != nil {
 		log.Error(result.DiscoveryErr, "CRD discovery returned partial results, some groups may be unreachable")
 	}
@@ -184,12 +186,94 @@ func LogAndReport(log logr.Logger, m model.Model, result CheckResult) {
 		"available", len(result.Available),
 		"missing", len(result.Missing),
 	)
+}
 
-	// Create findings for missing CRDs.
+// Report creates CRDNotAvailable findings attached to subject. subject must
+// identify an EmELand resource that already exists in the local model
+// (typically the cluster Context). Findings are not created when subject is
+// empty — they would otherwise land in landscape with no resources.
+func Report(log logr.Logger, m model.Model, result CheckResult, subject common.ResourceRef) {
+	if len(result.Missing) == 0 || subject.ResourceId == uuid.Nil {
+		return
+	}
+
 	ensureCRDMissingFindingType(log, m)
 	for _, entry := range result.Missing {
-		createCRDMissingFinding(log, m, entry)
+		createCRDMissingFinding(log, m, entry, subject)
 	}
+}
+
+// Reporter upserts CRDNotAvailable findings, preferring the cluster Context
+// and falling back to the sensor Node if kube-system never appears.
+type Reporter struct {
+	log      logr.Logger
+	model    model.Model
+	result   CheckResult
+	fallback *common.ResourceRef
+
+	mu                  sync.Mutex
+	reportedWithContext bool
+}
+
+// NewReporter holds a check result for later finding emission. fallbackNodeID
+// is the sensor Node used when the cluster Context is unavailable.
+func NewReporter(log logr.Logger, m model.Model, result CheckResult, fallbackNodeID uuid.UUID) *Reporter {
+	var fallback *common.ResourceRef
+	if fallbackNodeID != uuid.Nil {
+		fallback = &common.ResourceRef{
+			ResourceId:   fallbackNodeID,
+			ResourceType: events.NodeResource,
+		}
+	}
+	return &Reporter{
+		log:      log,
+		model:    m,
+		result:   result,
+		fallback: fallback,
+	}
+}
+
+// ReportWithContext attaches missing-CRD findings to the cluster Context.
+// Safe to call on a nil Reporter.
+func (r *Reporter) ReportWithContext(clusterContextID uuid.UUID) {
+	if r == nil || clusterContextID == uuid.Nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	Report(r.log, r.model, r.result, common.ResourceRef{
+		ResourceId:   clusterContextID,
+		ResourceType: events.ContextResource,
+	})
+	r.reportedWithContext = true
+}
+
+// ReportFallback attaches missing-CRD findings to the sensor Node when the
+// cluster Context has not been reported. No-op after ReportWithContext.
+// Safe to call on a nil Reporter.
+func (r *Reporter) ReportFallback() {
+	if r == nil || r.fallback == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.reportedWithContext {
+		return
+	}
+	Report(r.log, r.model, r.result, *r.fallback)
+}
+
+// ClearContext drops the cluster-Context attachment (e.g. kube-system deleted)
+// and re-emits findings on the sensor Node if one was configured.
+// Safe to call on a nil Reporter.
+func (r *Reporter) ClearContext() {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	r.reportedWithContext = false
+	r.mu.Unlock()
+	r.ReportFallback()
 }
 
 const crdMissingFindingKind = "CRDNotAvailable"
@@ -208,7 +292,7 @@ func ensureCRDMissingFindingType(log logr.Logger, m model.Model) {
 	}
 }
 
-func createCRDMissingFinding(log logr.Logger, m model.Model, entry CRDEntry) {
+func createCRDMissingFinding(log logr.Logger, m model.Model, entry CRDEntry, subject common.ResourceRef) {
 	kind := finding.FindingKind(crdMissingFindingKind)
 	typeID := finding.TypeIDForKind(kind)
 
@@ -223,6 +307,10 @@ func createCRDMissingFinding(log logr.Logger, m model.Model, entry CRDEntry) {
 			"The sensor cannot watch resources of this type.",
 		entry.String(), entry.Category,
 	))
+	f.SetResources([]*common.ResourceRef{{
+		ResourceId:   subject.ResourceId,
+		ResourceType: subject.ResourceType,
+	}})
 	if err := m.AddFinding(f); err != nil {
 		log.Error(err, "unable to add CRD missing finding", "crd", entry.String())
 	}
