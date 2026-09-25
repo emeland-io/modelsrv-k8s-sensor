@@ -51,6 +51,7 @@ import (
 	"go.emeland.io/modelsrv/pkg/backend"
 	"go.emeland.io/modelsrv/pkg/endpoint"
 	"go.emeland.io/modelsrv/pkg/model"
+	uberzap "go.uber.org/zap"
 
 	structurev1alpha1 "gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
 	"gitlab.com/emeland/k8s-model/internal/controller"
@@ -154,13 +155,24 @@ func main() {
 		os.Exit(1)
 	}
 
-	b, err := backend.New()
+	eventLog, err := uberzap.NewDevelopment()
+	if err != nil {
+		setupLog.Error(err, "unable to create zap logger for event manager")
+		os.Exit(1)
+	}
+	b, err := backend.New(backend.WithLogger(eventLog.Sugar()))
 	if err != nil {
 		setupLog.Error(err, "unable to create modelsrv backend")
 		os.Exit(1)
 	}
+	b.GetChain().RegisterFilter(sensor.ReplicationPayloadFilter(setupLog))
+	setupLog.Info("registered replication payload filter on event chain")
 
-	if err := registerSubscribers(b.GetEventManager(), parseCommaSeparatedList(subscriberURLs)); err != nil {
+	setupLog.Info("replication flags",
+		"subscriberURLs", subscriberURLs,
+		"allowInboundPush", allowInboundPush,
+	)
+	if err := registerSubscribers(b.GetEventManager(), subscriberURLs); err != nil {
 		setupLog.Error(err, "unable to register replication subscribers")
 		os.Exit(1)
 	}
@@ -391,23 +403,47 @@ func main() {
 }
 
 func runCRDCheck(mgr ctrl.Manager, emModel model.Model, crdChecklistRaw string, nodeID uuid.UUID) *crdcheck.Reporter {
+	log := setupLog.WithName("crdcheck")
 	checklist := crdcheck.DefaultChecklist
 	if crdChecklistRaw != "" {
 		parsed, err := crdcheck.ParseChecklist(crdChecklistRaw)
 		if err != nil {
-			setupLog.Error(err, "unable to parse --crd-checklist")
+			log.Error(err, "unable to parse --crd-checklist", "raw", crdChecklistRaw)
 			os.Exit(1)
 		}
 		checklist = parsed
+		log.Info("using --crd-checklist override", "raw", crdChecklistRaw, "parsed", len(checklist))
+	} else {
+		log.Info("using default CRD checklist", "size", len(checklist))
 	}
-	discoveryClient, err := discovery.NewDiscoveryClientForConfig(mgr.GetConfig())
+
+	cfg := mgr.GetConfig()
+	if cfg != nil {
+		log.Info("creating discovery client",
+			"host", cfg.Host,
+			"apiPath", cfg.APIPath,
+			"userAgent", cfg.UserAgent,
+			"timeout", cfg.Timeout.String(),
+			"insecure", cfg.Insecure,
+			"qps", cfg.QPS,
+			"burst", cfg.Burst,
+			"hasBearerToken", cfg.BearerToken != "",
+			"hasCertData", len(cfg.CertData) > 0,
+			"hasCAData", len(cfg.CAData) > 0,
+		)
+	} else {
+		log.Info("manager rest.Config is nil before discovery client creation")
+	}
+
+	discoveryClient, err := discovery.NewDiscoveryClientForConfig(cfg)
 	if err != nil {
-		setupLog.Error(err, "unable to create discovery client for CRD check")
+		log.Error(err, "unable to create discovery client for CRD check")
 		return nil
 	}
-	crdResult := crdcheck.Check(context.Background(), discoveryClient, checklist)
-	crdcheck.Log(setupLog, crdResult)
-	return crdcheck.NewReporter(setupLog, emModel, crdResult, nodeID)
+	log.Info("discovery client created", "fallbackNodeID", nodeID.String())
+	crdResult := crdcheck.Check(context.Background(), log, discoveryClient, checklist)
+	crdcheck.Log(log, crdResult)
+	return crdcheck.NewReporter(log, emModel, crdResult, nodeID)
 }
 
 func mustRegisterFindingTypes(emModel model.Model) {
@@ -450,10 +486,17 @@ func startAPIServer(b backend.Backend, addr string, allowInboundPush bool) (*htt
 	}
 
 	baseURL := fmt.Sprintf("http://%s/api", ln.Addr().String())
+	setupLog.Info("starting modelsrv API listener",
+		"listen", ln.Addr().String(),
+		"baseURL", baseURL,
+		"allowInboundPush", allowInboundPush,
+		"pushPath", "/api/events/push",
+	)
 	handler := endpoint.NewHandler(b.GetModel(), b.GetEventManager(), baseURL, endpoint.WebListenerOptions{})
 	wrapped := sensor.ReplicationGuard{
 		Handler:          handler,
 		AllowInboundPush: allowInboundPush,
+		Log:              setupLog,
 	}
 
 	srv := &http.Server{Handler: wrapped}

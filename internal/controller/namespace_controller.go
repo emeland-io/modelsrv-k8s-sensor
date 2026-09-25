@@ -75,6 +75,7 @@ func (r *NamespaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			if req.Name == "kube-system" {
+				log.Info("kube-system namespace gone; clearing cluster Context for CRD findings")
 				r.setClusterContextID(uuid.Nil)
 				r.CRDReporter.ClearContext()
 			}
@@ -114,6 +115,9 @@ func (r *NamespaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 	r.Index.Put(KindContext, req.Name, id)
 	if ns.Name == "kube-system" {
+		log.Info("kube-system modeled; attaching CRDNotAvailable findings to cluster Context",
+			"clusterContextID", id.String(),
+		)
 		r.CRDReporter.ReportWithContext(id)
 	}
 	r.reconcileContextParentFinding(id, ns)
@@ -140,13 +144,22 @@ type crdMissingFallback struct {
 // NamespaceReconciler will attach findings to the cluster Context; this
 // only fires the Node fallback when that namespace is absent.
 func (f *crdMissingFallback) Start(ctx context.Context) error {
+	log := logr.FromContext(ctx).WithName("crdcheck-fallback")
 	if f == nil || f.Reporter == nil {
+		log.Info("CRD missing fallback runnable skipped; reporter is nil")
 		return nil
 	}
 	ns := &corev1.Namespace{}
 	if err := f.Client.Get(ctx, client.ObjectKey{Name: "kube-system"}, ns); err != nil {
+		log.Info("kube-system not found after cache sync; attaching CRD findings to sensor Node",
+			"err", err.Error(),
+		)
 		f.Reporter.ReportFallback()
+		return nil
 	}
+	log.Info("kube-system present after cache sync; NamespaceReconciler will attach CRD findings to cluster Context",
+		"uid", string(ns.UID),
+	)
 	return nil
 }
 

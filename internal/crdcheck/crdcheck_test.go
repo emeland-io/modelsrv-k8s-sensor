@@ -64,7 +64,7 @@ func TestCheck_AllAvailable(t *testing.T) {
 		},
 	}
 	disc := fakeDiscoveryWithResources(resources)
-	result := crdcheck.Check(context.Background(), disc, checklist)
+	result := crdcheck.Check(context.Background(), logr.Discard(), disc, checklist)
 
 	assert.Len(t, result.Available, 1)
 	assert.Empty(t, result.Missing)
@@ -84,7 +84,7 @@ func TestCheck_SomeMissing(t *testing.T) {
 		},
 	}
 	disc := fakeDiscoveryWithResources(resources)
-	result := crdcheck.Check(context.Background(), disc, checklist)
+	result := crdcheck.Check(context.Background(), logr.Discard(), disc, checklist)
 
 	assert.Len(t, result.Available, 1)
 	assert.Len(t, result.Missing, 1)
@@ -96,7 +96,7 @@ func TestCheck_AllMissing(t *testing.T) {
 		{Group: "cert-manager.io", Version: "v1", Resource: "certificates", DisplayName: "Certificate", Category: "CertManager"},
 	}
 	disc := fakeDiscoveryWithResources(nil)
-	result := crdcheck.Check(context.Background(), disc, checklist)
+	result := crdcheck.Check(context.Background(), logr.Discard(), disc, checklist)
 
 	assert.Empty(t, result.Available)
 	assert.Len(t, result.Missing, 1)
@@ -127,7 +127,7 @@ func TestCheck_PartialDiscoveryFailure(t *testing.T) {
 		},
 	})
 
-	result := crdcheck.Check(context.Background(), disc, checklist)
+	result := crdcheck.Check(context.Background(), logr.Discard(), disc, checklist)
 
 	// Should use partial data: cert-manager found, monitoring missing.
 	assert.Len(t, result.Available, 1)
@@ -144,7 +144,7 @@ func TestCheck_TotalDiscoveryFailure(t *testing.T) {
 
 	disc := newPartialFailDiscovery(nil, errors.New("connection refused"))
 
-	result := crdcheck.Check(context.Background(), disc, checklist)
+	result := crdcheck.Check(context.Background(), logr.Discard(), disc, checklist)
 
 	assert.Empty(t, result.Available)
 	assert.Len(t, result.Missing, 1)
