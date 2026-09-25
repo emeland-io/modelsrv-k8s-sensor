@@ -27,16 +27,21 @@ func TestReplicationGuard_BlocksPushByDefault(t *testing.T) {
 }
 
 func TestReplicationGuard_AllowsPushWhenEnabled(t *testing.T) {
+	var gotBody string
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		gotBody = string(b)
 		w.WriteHeader(http.StatusOK)
 	})
 	guard := sensor.ReplicationGuard{Handler: inner, AllowInboundPush: true}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/events/push", strings.NewReader("{}"))
+	req := httptest.NewRequest(http.MethodPost, "/api/events/push", strings.NewReader(`{"kind":"Finding"}`))
 	rec := httptest.NewRecorder()
 	guard.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, `{"kind":"Finding"}`, gotBody)
 }
 
 func TestReplicationGuard_PassesOtherRoutes(t *testing.T) {
