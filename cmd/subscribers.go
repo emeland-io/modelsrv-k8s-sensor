@@ -168,8 +168,14 @@ func probeSubscriber(log logr.Logger, raw string) {
 		)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			log.Error(closeErr, "subscriber probe: closing response body", "url", raw)
+		}
+	}()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, subscriberProbeBodyLimit))
+	// GET to a modelsrv /api base is often 404 even when replication is
+	// healthy. This probe never blocks registration (3s timeout, log only).
 	log.Info("subscriber probe: GET response",
 		"url", raw,
 		"elapsed", elapsed.String(),
@@ -180,6 +186,11 @@ func probeSubscriber(log logr.Logger, raw string) {
 		"server", resp.Header.Get("Server"),
 		"via", resp.Header.Get("Via"),
 		"l5dClientId", resp.Header.Get("l5d-client-id"),
+		"payloadBytes", len(body),
+	)
+	log.V(1).Info("subscriber probe: GET response body",
+		"url", raw,
+		"statusCode", resp.StatusCode,
 		"payloadBytes", len(body),
 		"payload", string(body),
 	)

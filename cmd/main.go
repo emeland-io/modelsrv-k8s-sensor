@@ -51,7 +51,6 @@ import (
 	"go.emeland.io/modelsrv/pkg/backend"
 	"go.emeland.io/modelsrv/pkg/endpoint"
 	"go.emeland.io/modelsrv/pkg/model"
-	uberzap "go.uber.org/zap"
 
 	structurev1alpha1 "gitlab.com/emeland/k8s-model/api/k8s/v1alpha1"
 	"gitlab.com/emeland/k8s-model/internal/controller"
@@ -155,11 +154,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	eventLog, err := uberzap.NewDevelopment()
-	if err != nil {
-		setupLog.Error(err, "unable to create zap logger for event manager")
-		os.Exit(1)
-	}
+	// Same flag-configurable zap options as the controller-runtime logger
+	// (--zap-devel, --zap-encoder, --zap-log-level, …).
+	eventLog := zap.NewRaw(zap.UseFlagOptions(&opts))
 	b, err := backend.New(backend.WithLogger(eventLog.Sugar()))
 	if err != nil {
 		setupLog.Error(err, "unable to create modelsrv backend")
