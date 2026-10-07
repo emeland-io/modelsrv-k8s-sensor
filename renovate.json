@@ -1,0 +1,8 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "github>opendefensecloud/renovate-config",
+    "github>opendefensecloud/renovate-config:go",
+    "github>opendefensecloud/renovate-config:k8s"
+  ]
+}
