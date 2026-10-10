@@ -19,7 +19,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout tag commit
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.1.0
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
