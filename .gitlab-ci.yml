@@ -33,7 +33,7 @@ e2e-test:
   stage: e2e
   image: kindest/node:v1.24.0
   services:
-    - docker:20.10.16-dind
+    - docker:29.9.2-dind@sha256:9e79b879b177fbd72c34376a3dd3d91747da5db49e1f560f76aea59561471977
   variables:
     DOCKER_TLS_CERTDIR: "/certs"
     DOCKER_HOST: "tcp://docker:2376"
@@ -65,9 +65,9 @@ e2e-test:
 # Build and push operator image
 build-operator:
   stage: build
-  image: docker:20.10.16
+  image: docker:29.9.2@sha256:9e79b879b177fbd72c34376a3dd3d91747da5db49e1f560f76aea59561471977
   services:
-    - docker:20.10.16-dind
+    - docker:29.9.2-dind@sha256:9e79b879b177fbd72c34376a3dd3d91747da5db49e1f560f76aea59561471977
   variables:
     DOCKER_TLS_CERTDIR: "/certs"
   before_script:
